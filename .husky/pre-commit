@@ -1,0 +1,4 @@
+#!/bin/sh
+# qagent-hook
+npx qagent run --hook
+exit $?

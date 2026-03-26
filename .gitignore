@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.qagent/tmp/
+*.tsbuildinfo
+coverage/
+qagent

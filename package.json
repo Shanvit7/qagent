@@ -1,0 +1,70 @@
+{
+  "name": "qagent",
+  "version": "0.1.0",
+  "description": "Local CI for React/Next.js — AI-generated QA tests on every git commit",
+  "type": "module",
+  "bin": {
+    "qagent": "./dist/cli/index.js"
+  },
+  "module": "./dist/cli/index.js",
+  "types": "./dist/cli/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/cli/index.d.ts",
+      "import": "./dist/cli/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "bun run src/cli/index.ts",
+    "build": "tsup",
+    "build:watch": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "check": "tsc --noEmit && vitest run",
+    "lint": "eslint src --ext .ts,.tsx",
+    "prepublishOnly": "bun run check && bun run build"
+  },
+  "keywords": [
+    "qa",
+    "testing",
+    "git-hooks",
+    "react",
+    "nextjs",
+    "ai",
+    "ollama",
+    "pre-commit",
+    "qagent"
+  ],
+  "author": "Shanvit Shetty",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Shanvit7/qagent.git"
+  },
+  "homepage": "https://github.com/Shanvit7/qagent#readme",
+  "bugs": {
+    "url": "https://github.com/Shanvit7/qagent/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.1.0",
+    "commander": "^12.0.0",
+    "ollama": "^0.5.0",
+    "picocolors": "^1.1.1",
+    "playwright": "^1.58.2",
+    "simple-git": "^3.22.0",
+    "ts-morph": "^21.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.4.0",
+    "vitest": "^1.4.0"
+  }
+}

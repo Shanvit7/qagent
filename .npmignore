@@ -1,0 +1,12 @@
+src/
+*.tsbuildinfo
+coverage/
+.qagent/
+.husky/
+.pi/
+AGENT.md
+docs/
+vitest.config.ts
+tsup.config.ts
+tsconfig.json
+bun.lock
