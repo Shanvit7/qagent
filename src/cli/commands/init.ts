@@ -40,6 +40,8 @@ const isAlreadyInstalled = (cwd: string): boolean => {
 export const initCommand = async (): Promise<void> => {
   const cwd = process.cwd();
 
+  // Raw console.log is correct here — the logo must print before clack's
+  // intro so clack doesn't prepend its own header line above the banner.
   console.log(LOGO);
   p.intro(color.cyan(color.bold("qagent") + " — setup wizard"));
 

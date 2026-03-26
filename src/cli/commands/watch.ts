@@ -53,12 +53,12 @@ const runCycle = async (cwd: string): Promise<void> => {
 
     const toTest = classifyStagedFiles(stagedFiles, config.classifier.skipTrivial);
     if (toTest.length === 0) {
-      console.log(color.dim(`  [${time()}] No QA-worthy changes`));
+      p.log.message(color.dim(`[${time()}] No QA-worthy changes`));
       running = false;
       return;
     }
 
-    console.log(`\n${color.cyan(`[${time()}]`)} Testing ${toTest.length} file(s)...`);
+    p.log.step(`[${time()}] Testing ${toTest.length} file(s)...`);
 
     for (const { file, classification } of toTest) {
       const label = file.path.split("/").pop() ?? file.path;
@@ -68,7 +68,7 @@ const runCycle = async (cwd: string): Promise<void> => {
       try {
         analysis = analyzeFile(file.path);
       } catch {
-        console.log(color.dim(`  ⏭  ${label} — could not analyze`));
+        p.log.warn(`${label} — could not analyze file`);
         continue;
       }
 
@@ -77,7 +77,7 @@ const runCycle = async (cwd: string): Promise<void> => {
       const routes = routeMatches.map((r) => r.route);
 
       if (routes.length === 0) {
-        console.log(color.dim(`  ⏭  ${label} — no routes found`));
+        p.log.warn(`${label} — no routes found, skipping`);
         continue;
       }
 
@@ -103,7 +103,7 @@ const runCycle = async (cwd: string): Promise<void> => {
         testCode = generated.testCode;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.log(color.yellow(`  ⚠  ${label} — AI error: ${msg}`));
+        p.log.warn(`${label} — AI unavailable: ${msg}`);
         continue;
       }
 
@@ -116,9 +116,9 @@ const runCycle = async (cwd: string): Promise<void> => {
 
       // Auto-install Playwright browsers if missing, then retry once
       if (result.isInfraError) {
-        console.log(color.red(`  ✗  ${label} — Playwright browsers not installed`));
-        console.log(color.dim(`      → Run: npx playwright install chromium`));
-        console.log(color.dim(`      → Or re-run: qagent init`));
+        p.log.error(`${label} — Playwright browsers not installed`);
+        p.log.message(color.dim(`  → Fix: npx playwright install chromium`));
+        p.log.message(color.dim(`  → Or:  qagent init`));
         continue;
       }
 
@@ -167,7 +167,7 @@ const runCycle = async (cwd: string): Promise<void> => {
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.log(color.red(`\n  Error: ${msg}`));
+    p.log.error(`Watch cycle error: ${msg}`);
   } finally {
     running = false;
   }
@@ -183,13 +183,14 @@ const printResult = (
   const failed = result.testCases.filter((t) => t.status === "fail").length;
   const total = result.testCases.length;
   const routeStr = color.dim(`[${routes.join(", ")}]`);
+  const tag = suffix ? color.dim(` ${suffix}`) : "";
 
   if (result.passed) {
-    console.log(`  ${color.green("✓")}  ${label} ${routeStr} — ${color.green(`${total}/${total} pass`)} ${suffix}`);
+    p.log.success(`${label} ${routeStr} — ${color.green(`${total}/${total} pass`)}${tag}`);
   } else {
-    console.log(`  ${color.red("✗")}  ${label} ${routeStr} — ${color.red(`${failed} fail`)}/${total} ${suffix}`);
+    p.log.error(`${label} ${routeStr} — ${color.red(`${failed}/${total} fail`)}${tag}`);
     for (const tc of result.testCases.filter((t) => t.status === "fail").slice(0, 3)) {
-      console.log(color.dim(`     ✗ ${tc.name}: ${tc.failureMessage?.split("\n")[0]?.slice(0, 100) ?? "unknown"}`));
+      p.log.message(color.dim(`  ✗ ${tc.name}: ${tc.failureMessage?.split("\n")[0]?.slice(0, 100) ?? "unknown"}`));
     }
   }
 };
@@ -199,7 +200,7 @@ const time = (): string => new Date().toLocaleTimeString("en-US", { hour12: fals
 // ─── Cleanup ──────────────────────────────────────────────────────────────────
 
 const cleanup = async (): Promise<void> => {
-  console.log(color.dim("\n  Shutting down..."));
+  p.log.message(color.dim("Shutting down..."));
   if (debounceTimer) clearTimeout(debounceTimer);
   try { await server?.stop(); } catch { /* already stopped */ }
   process.exit(0);
@@ -271,5 +272,5 @@ export const watchCommand = async (): Promise<void> => {
   writeScanCache(cwd, scan);
 
   p.log.success("Watching for staged changes... (Ctrl+C to stop)");
-  console.log(color.dim(`  Debounce: ${debounceMs}ms | Max routes: ${config.watch.maxRoutes}`));
+  p.log.message(color.dim(`Debounce: ${debounceMs}ms | Max routes: ${config.watch.maxRoutes}`));
 };

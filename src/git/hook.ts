@@ -137,5 +137,4 @@ export const removeGitHook = (cwd: string = process.cwd()): void => {
     .trimEnd();
 
   writeFileSync(hookPath, cleaned + "\n", "utf8");
-  console.log(`✅ qagent pre-commit hook removed from ${hookPath}`);
 };

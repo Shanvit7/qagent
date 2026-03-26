@@ -57,14 +57,11 @@ export const skillCommand = async (): Promise<void> => {
     "Fill in your skill file",
   );
 
-  console.log("");
-  console.log(color.cyan("─".repeat(70)));
-  console.log(color.cyan(color.bold(" PASTE THIS INTO YOUR IDE AGENT")));
-  console.log(color.cyan("─".repeat(70)));
-  console.log("");
-  console.log(IDE_PROMPT);
-  console.log("");
-  console.log(color.cyan("─".repeat(70)));
+  // Raw stdout — no clack decoration — so the user can copy-paste the prompt cleanly
+  const hr = color.cyan("─".repeat(70));
+  process.stdout.write(`\n${hr}\n${color.cyan(color.bold(" PASTE THIS INTO YOUR IDE AGENT"))}\n${hr}\n\n`);
+  process.stdout.write(IDE_PROMPT + "\n");
+  process.stdout.write(`\n${hr}\n`);
 
   p.outro(`Once your IDE agent fills in ${color.bold(SKILL_FILE)}, you're ready to generate tests.`);
 };

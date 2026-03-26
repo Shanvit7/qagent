@@ -33,35 +33,6 @@ export interface RunReport {
   overallPassed: boolean;
 }
 
-// ─── Playwright JSON shape ─────────────────────────────────────────────────────
-// (Parsing also available via runner's parsePlaywrightJson for internal use)
-
-// ─── Parser ───────────────────────────────────────────────────────────────────
-
-export const parseVitestJson = (raw: string): TestCase[] => {
-  // Legacy — kept for backward compatibility but no longer primary path.
-  // Playwright results are parsed by runner/index.ts parsePlaywrightJson().
-  try {
-    const json = JSON.parse(raw) as { testResults?: Array<{ assertionResults?: Array<{ title: string; status: string; duration: number | null; failureMessages: string[]; ancestorTitles: string[] }>; status?: string; message?: string }> };
-    return (json.testResults ?? []).flatMap((suite) => {
-      if ((suite.assertionResults?.length ?? 0) > 0) {
-        return (suite.assertionResults ?? []).map((a): TestCase => ({
-          name: a.ancestorTitles.length > 0 ? `${a.ancestorTitles.join(" › ")} › ${a.title}` : a.title,
-          status: a.status === "passed" ? "pass" : a.status === "pending" || a.status === "skipped" ? "skip" : "fail",
-          durationMs: Math.round(a.duration ?? 0),
-          ...(a.failureMessages[0] != null ? { failureMessage: a.failureMessages[0].split("\n")[0] } : {}),
-        }));
-      }
-      if (suite.status === "failed" && suite.message) {
-        return [{ name: "(suite failed to load)", status: "fail" as const, durationMs: 0, ...(suite.message ? { failureMessage: suite.message.split("\n")[0] } : {}) }];
-      }
-      return [];
-    });
-  } catch {
-    return [];
-  }
-};
-
 // ─── Terminal renderer ────────────────────────────────────────────────────────
 
 const STATUS_ICON: Record<TestCase["status"], string> = {
@@ -75,13 +46,18 @@ const ACTION_BADGE: Record<FileReport["action"], string> = {
   LIGHTWEIGHT: color.bgYellow(color.black(" LIGHTWEIGHT ")),
 };
 
+// Use process.stdout.write instead of console.log so clack's cursor state
+// is not disturbed when renderFileReport is called between clack operations.
+const writeln = (line = ""): void => { process.stdout.write(line + "\n"); };
+
 export const renderFileReport = (report: FileReport): void => {
   const name = color.bold(basename(report.sourceFile));
-  console.log(`\n  ${ACTION_BADGE[report.action]}  ${name}`);
+  writeln();
+  writeln(`  ${ACTION_BADGE[report.action]}  ${name}`);
 
   if (report.status === "error") {
-    console.log(color.red("  ✗ Could not run tests"));
-    if (report.errorOutput) console.log(color.dim(report.errorOutput.slice(0, 400)));
+    writeln(color.red("  ✗ Could not run tests"));
+    if (report.errorOutput) writeln(color.dim(report.errorOutput.slice(0, 400)));
     return;
   }
 
@@ -90,9 +66,9 @@ export const renderFileReport = (report: FileReport): void => {
     const connector = i === tree.length - 1 ? "└─" : "├─";
     const dur = color.dim(`${tc.durationMs}ms`);
     const icon = STATUS_ICON[tc.status];
-    console.log(`  ${color.dim(connector)} ${icon}  ${tc.name}  ${dur}`);
+    writeln(`  ${color.dim(connector)} ${icon}  ${tc.name}  ${dur}`);
     if (tc.failureMessage) {
-      console.log(`  ${color.dim("   ")} ${color.red(tc.failureMessage)}`);
+      writeln(`  ${color.dim("   ")} ${color.red(tc.failureMessage)}`);
     }
   });
 
@@ -102,7 +78,8 @@ export const renderFileReport = (report: FileReport): void => {
   const summary = failed > 0
     ? color.red(`${failed}/${total} failed`)
     : color.green(`${total}/${total} passed`);
-  console.log(color.dim(`\n  ${summary}  ·  ${report.totalMs}ms`));
+  writeln();
+  writeln(`  ${summary}  ·  ${color.dim(`${report.totalMs}ms`)}`);
 };
 
 // ─── Git helpers ──────────────────────────────────────────────────────────────
