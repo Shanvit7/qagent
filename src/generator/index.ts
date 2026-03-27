@@ -46,7 +46,8 @@ const LENS_DESCRIPTIONS: Record<QaLens, string> = {
   - **Mobile**: \`page.setViewportSize({ width: 375, height: 667 })\` before navigating — check nav collapses, tap targets ≥ 44px, no horizontal scroll (\`page.evaluate(() => document.body.scrollWidth <= window.innerWidth)\`)
   - **Keyboard**: \`page.keyboard.press("Tab")\` through interactive elements — assert focus is visible
   - **Back/forward**: navigate to route, click a link, press \`page.goBack()\` — assert original content restored
-  - **Rapid clicks**: click a button 3× quickly — assert no duplicate submissions or broken UI`,
+  - **Rapid clicks**: click a button 3× quickly — assert no duplicate submissions or broken UI
+  - **Animation settle**: instead of \`page.waitForTimeout()\`, use \`await page.locator("header").waitFor({ state: "hidden" })\` or \`await expect(locator).toBeHidden()\` — Playwright auto-waits on locator assertions`,
 
   security: `**Security** — auth gates hold and sensitive data stays hidden.
   - Navigate to the route in a fresh context (no cookies) — assert redirect to \`/login\` or \`/auth\` or a 401 response
@@ -124,7 +125,7 @@ await page.waitForLoadState("domcontentloaded");
 // Test the USER-VISIBLE BEHAVIOR the hook enables
 // e.g. if useScroll → test that header hides on scroll
 await page.evaluate(() => window.scrollTo(0, 300));
-await page.waitForTimeout(300); // allow animation
+await expect(page.locator("header")).toBeHidden(); // auto-waits for animation
 const box = await page.locator("header").boundingBox();
 expect(box?.y).toBeLessThan(0); // scrolled off-screen
 \`\`\``,
