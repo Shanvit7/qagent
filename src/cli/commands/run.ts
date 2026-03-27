@@ -28,6 +28,7 @@ import {
   type FileReport,
 } from "../../reporter/index.js";
 import { loadFailureContext, updateFailureContext, type FailureContext } from "../../feedback/index.js";
+import { getSessionUsage, resetSessionUsage } from "../../providers/index.js";
 
 // -- Constants --
 
@@ -316,6 +317,7 @@ export const runCommand = async (options: RunOptions = {}): Promise<void> => {
 
   const config     = loadConfig(cwd);
   const failureCtx = loadFailureContext(cwd);
+  resetSessionUsage();
 
   // -- 0. Project scan --
   const scan = scanProject(cwd);
@@ -411,10 +413,15 @@ export const runCommand = async (options: RunOptions = {}): Promise<void> => {
     updateFailureContext(cwd, fileReports);
 
     // -- 8. Write report --
-    const reportPath = await writeRunReport(cwd, fileReports);
+    const usage      = getSessionUsage();
+    const reportPath = await writeRunReport(cwd, fileReports, usage);
     const allPassed  = fileReports.every((r) => r.status === "pass");
 
-    p.log.info(`Report → ${reportPath.replace(cwd + "/", "")}`);
+    const tokenLine = (usage.promptTokens + usage.completionTokens) > 0
+      ? color.dim(`  ↑ ${usage.promptTokens.toLocaleString()} / ↓ ${usage.completionTokens.toLocaleString()} tokens`)
+      : "";
+
+    p.log.info(`Report → ${reportPath.replace(cwd + "/", "")}${tokenLine ? "\n" + tokenLine : ""}`);
 
     if (allPassed) {
       p.outro(color.green("QA passed."));

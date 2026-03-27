@@ -154,6 +154,7 @@ const ollamaGenerate = async (
     ...(opts.jsonMode ? { format: "json" } : {}),
     options: { temperature: opts.temperature ?? 0.2 },
   });
+  accrue(response.prompt_eval_count ?? 0, response.eval_count ?? 0);
   return response.response;
 };
 
@@ -182,6 +183,7 @@ const ollamaChat = async (
     name: tc.function.name,
     arguments: tc.function.arguments as Record<string, string>,
   }));
+  accrue(response.prompt_eval_count ?? 0, response.eval_count ?? 0);
 
   return {
     content,
@@ -235,7 +237,11 @@ const openaiGenerate = async (
   });
 
   if (!res.ok) throw new Error(`OpenAI API error: ${res.status} ${await res.text()}`);
-  const data = (await res.json()) as { choices: { message: { content: string } }[] };
+  const data = (await res.json()) as {
+    choices: { message: { content: string } }[];
+    usage?: { prompt_tokens: number; completion_tokens: number };
+  };
+  accrue(data.usage?.prompt_tokens ?? 0, data.usage?.completion_tokens ?? 0);
   return data.choices[0]?.message?.content ?? "";
 };
 
@@ -290,7 +296,9 @@ const openaiChat = async (
         tool_calls?: { id: string; function: { name: string; arguments: string } }[];
       };
     }[];
+    usage?: { prompt_tokens: number; completion_tokens: number };
   };
+  accrue(data.usage?.prompt_tokens ?? 0, data.usage?.completion_tokens ?? 0);
 
   const msg = data.choices[0]?.message;
   const content = (msg?.content ?? "").trim();
@@ -335,7 +343,11 @@ const anthropicGenerate = async (
   });
 
   if (!res.ok) throw new Error(`Anthropic API error: ${res.status} ${await res.text()}`);
-  const data = (await res.json()) as { content: { type: string; text?: string }[] };
+  const data = (await res.json()) as {
+    content: { type: string; text?: string }[];
+    usage?: { input_tokens: number; output_tokens: number };
+  };
+  accrue(data.usage?.input_tokens ?? 0, data.usage?.output_tokens ?? 0);
   const textBlock = data.content.find((b) => b.type === "text");
   return textBlock?.text ?? "";
 };
@@ -421,7 +433,9 @@ const anthropicChat = async (
 
   const data = (await res.json()) as {
     content: { type: string; id?: string; text?: string; name?: string; input?: Record<string, string> }[];
+    usage?: { input_tokens: number; output_tokens: number };
   };
+  accrue(data.usage?.input_tokens ?? 0, data.usage?.output_tokens ?? 0);
 
   const textBlocks = data.content.filter((b) => b.type === "text");
   const toolBlocks = data.content.filter((b) => b.type === "tool_use");
@@ -442,6 +456,23 @@ const anthropicChat = async (
     },
   };
 };
+
+// ─── Session token accumulator ───────────────────────────────────────────────
+
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+}
+
+let _session: TokenUsage = { promptTokens: 0, completionTokens: 0 };
+
+const accrue = (prompt: number, completion: number): void => {
+  _session.promptTokens    += prompt;
+  _session.completionTokens += completion;
+};
+
+export const getSessionUsage  = (): Readonly<TokenUsage> => ({ ..._session });
+export const resetSessionUsage = (): void => { _session = { promptTokens: 0, completionTokens: 0 }; };
 
 // ─── Unified API ─────────────────────────────────────────────────────────────
 

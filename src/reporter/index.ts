@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, appendFileSync } fr
 import { join, basename } from "node:path";
 import color from "picocolors";
 import simpleGit from "simple-git";
+import type { TokenUsage } from "../providers/index.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,6 +32,7 @@ export interface RunReport {
   totalFailed: number;
   totalMs: number;
   overallPassed: boolean;
+  tokenUsage?: TokenUsage | undefined;
 }
 
 // ─── Terminal renderer ────────────────────────────────────────────────────────
@@ -144,14 +146,18 @@ const buildMarkdown = (report: RunReport): string => {
   }
 
   lines.push(`---`);
-  lines.push(`*${report.totalPassed} passed · ${report.totalFailed} failed · ${report.totalMs}ms total*`);
+  const tokenSuffix = report.tokenUsage
+    ? ` · ↑ ${report.tokenUsage.promptTokens.toLocaleString()} / ↓ ${report.tokenUsage.completionTokens.toLocaleString()} tokens`
+    : "";
+  lines.push(`*${report.totalPassed} passed · ${report.totalFailed} failed · ${report.totalMs}ms total${tokenSuffix}*`);
 
   return lines.join("\n");
 };
 
 export const writeRunReport = async (
   cwd: string,
-  files: FileReport[]
+  files: FileReport[],
+  tokenUsage?: TokenUsage,
 ): Promise<string> => {
   const { branch, commitHash } = await getGitInfo(cwd);
 
@@ -168,6 +174,7 @@ export const writeRunReport = async (
     totalFailed,
     totalMs,
     overallPassed: totalFailed === 0 && files.every((f) => f.status !== "error"),
+    ...(tokenUsage ? { tokenUsage } : {}),
   };
 
   const slug = report.timestamp.replace(/[: ]/g, "-").slice(0, 16);
