@@ -9,26 +9,27 @@ import * as p from "@clack/prompts";
 import color from "picocolors";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { getStagedFiles } from "../../git/staged.js";
-import { classifyStagedFiles, type ClassifiedFile } from "../../classifier/index.js";
-import { analyzeFile } from "../../analyzer/index.js";
-import { generateTests, refineTests, type GenerateTestsOptions } from "../../generator/index.js";
-import { runPlaywrightTest, type StructuredTestResult } from "../../runner/index.js";
-import { evaluateTests, buildRefinementPrompt, type RefinementContext } from "../../evaluator/index.js";
-import type { EvaluationResult } from "../../evaluator/index.js";
-import { loadConfig } from "../../config/loader.js";
-import { runPreflight } from "../../preflight/index.js";
-import { scanProject, writeScanCache, scanToMarkdown } from "../../scanner/index.js";
-import { buildFileContext } from "../../context/index.js";
-import { buildRouteMap, findRoutesForFile, type RouteMap } from "../../routes/index.js";
-import { startServer, type ServerHandle } from "../../server/index.js";
+import { getStagedFiles } from "@/git/staged";
+import { classifyStagedFiles, type ClassifiedFile } from "@/classifier/index";
+import { analyzeFile } from "@/analyzer/index";
+import { generateTests, refineTests, type GenerateTestsOptions } from "@/generator/index";
+import { runPlaywrightTest, type StructuredTestResult } from "@/runner/index";
+import { evaluateTests, buildRefinementPrompt } from "@/evaluator/index";
+import type { EvaluationResult } from "@/evaluator/index";
+import { loadConfig } from "@/config/loader";
+import { runPreflight } from "@/preflight/index";
+import { scanProject, writeScanCache, scanToMarkdown } from "@/scanner/index";
+import { buildFileContext } from "@/context/index";
+import { buildRouteMap, findRoutesForFile, type RouteMap } from "@/routes/index";
+import { startServer, type ServerHandle } from "@/server/index";
 import {
   renderFileReport,
   writeRunReport,
   type FileReport,
-} from "../../reporter/index.js";
-import { loadFailureContext, updateFailureContext, type FailureContext } from "../../feedback/index.js";
-import { getSessionUsage, resetSessionUsage } from "../../providers/index.js";
+} from "@/reporter/index";
+import { loadFailureContext, updateFailureContext, type FailureContext } from "@/feedback/index";
+import { getSessionUsage, resetSessionUsage, formatTokenDelta, formatTokenSummary } from "@/providers/index";
+import { MIN_ITERATIONS, MAX_ITERATIONS } from "@/config/loader";
 
 // -- Constants --
 
@@ -96,12 +97,14 @@ const processFile = async (
       changedRegions: classification.changedRegions,
     };
 
+    const beforeGen = getSessionUsage();
     const generated = await generateTests(
       analysis, config, config.playwright.lenses, routes, cwd,
       scanContext, router, fileContext, genOptions,
     );
     testCode = generated.testCode;
-    s.stop("Tests generated");
+    const genTokens = formatTokenDelta(beforeGen, getSessionUsage());
+    s.stop(`Tests generated${genTokens ? color.dim(`  ${genTokens}`) : ""}`);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     s.stop(color.yellow(`AI unavailable — skipping (${message})`));
@@ -139,8 +142,11 @@ const processFile = async (
 
     const failedTests = result.testCases.filter((t) => t.status === "fail");
     const passedCount = result.testCases.length - failedTests.length;
+    const noTestsFound = result.testCases.length === 0;
 
-    if (failedTests.length === 0 && result.testCases.length > 0) {
+    if (noTestsFound) {
+      runSpinner.stop(color.yellow("No tests discovered — generated code had no runnable test() blocks"));
+    } else if (failedTests.length === 0) {
       runSpinner.stop(color.green(`All ${result.testCases.length} tests pass`));
     } else {
       runSpinner.stop(
@@ -162,6 +168,7 @@ const processFile = async (
     evalSpinner.start(`Evaluating (iteration ${iter}/${maxIter})`);
 
     let evaluation: EvaluationResult;
+    const beforeEval = getSessionUsage();
     try {
       evaluation = await evaluateTests(testCode, analysis, config.ai, {
         failedTests: failedTests.map((t) => ({
@@ -179,20 +186,31 @@ const processFile = async (
       break;
     }
 
+    const evalTokens = formatTokenDelta(beforeEval, getSessionUsage());
+    const tokenSuffix = evalTokens ? color.dim(`  ${evalTokens}`) : "";
+
     const adjustedScore = Math.max(1, evaluation.overallScore - runtimePenalty);
 
-    if (adjustedScore > bestScore) {
+    // Never promote a zero-test result as "best" — even a high evaluator score
+    // on code that produced no runnable tests is worse than any real test run.
+    if (!noTestsFound && adjustedScore > bestScore) {
       bestScore = adjustedScore;
       bestCode = testCode;
       bestResult = result;
     }
 
-    if (failedTests.length === 0 && (evaluation.passed || adjustedScore >= evalConfig.acceptThreshold)) {
-      evalSpinner.stop(color.green(`Passed (score: ${adjustedScore.toFixed(1)}/10)`));
+    // 0 test cases means the generated code had no runnable tests — don't
+    // accept this as a pass regardless of evaluator score. Force refinement.
+    if (!noTestsFound && failedTests.length === 0 && (evaluation.passed || adjustedScore >= evalConfig.acceptThreshold)) {
+      evalSpinner.stop(color.green(`Passed (score: ${adjustedScore.toFixed(1)}/10)`) + tokenSuffix);
       break;
     }
 
-    evalSpinner.stop(color.yellow(`Score: ${adjustedScore.toFixed(1)}/10`));
+    if (noTestsFound) {
+      evalSpinner.stop(color.yellow(`Score: ${adjustedScore.toFixed(1)}/10 — no tests ran, refining`) + tokenSuffix);
+    } else {
+      evalSpinner.stop(color.yellow(`Score: ${adjustedScore.toFixed(1)}/10`) + tokenSuffix);
+    }
 
     if (iter === maxIter) {
       testCode = bestCode;
@@ -214,9 +232,11 @@ const processFile = async (
         failedTests: failedTests.map((t) => ({ name: t.name, error: t.failureMessage })),
         evaluation,
       });
+      const beforeRefine = getSessionUsage();
       testCode = await refineTests(testCode, prompt, config.ai);
       lastCritique = evaluation.critique;
-      refineSpinner.stop("Refined");
+      const refineTokens = formatTokenDelta(beforeRefine, getSessionUsage());
+      refineSpinner.stop(`Refined${refineTokens ? color.dim(`  ${refineTokens}`) : ""}`);
     } catch {
       refineSpinner.stop(color.dim("Refinement failed — using best"));
       testCode = bestCode;
@@ -244,7 +264,7 @@ const processFile = async (
       totalMs: result.durationMs,
       ...(result.errorOutput ? { errorOutput: result.errorOutput } : {}),
     };
-    failureText = buildFailureText(file.path, result.errorOutput, []);
+    failureText = buildFailureText(file.path, result.errorOutput, [], file.diff);
   } else {
     report = {
       sourceFile: file.path,
@@ -260,6 +280,7 @@ const processFile = async (
         file.path,
         result.errorOutput,
         result.testCases.filter((t) => t.status === "fail"),
+        file.diff,
       );
     }
   }
@@ -273,19 +294,24 @@ const buildFailureText = (
   filePath: string,
   errorOutput: string,
   failedCases: Array<{ name: string; failureMessage?: string | undefined }>,
+  diff?: string,
 ): string => {
   const lines: string[] = [`File: ${filePath}`, `Time: ${new Date().toISOString()}`, ""];
+
+  if (diff?.trim()) {
+    lines.push("Code changes (git diff --staged):", "```diff", diff.trim().slice(0, 4_000), "```", "");
+  }
 
   if (failedCases.length > 0) {
     lines.push("Failed tests:");
     for (const tc of failedCases) {
       lines.push(`  ✗ ${tc.name}`);
-      if (tc.failureMessage) lines.push(`    ${tc.failureMessage}`);
+      if (tc.failureMessage) lines.push(`    ${tc.failureMessage.slice(0, 400)}`);
     }
   }
 
   if (errorOutput) {
-    lines.push("", "Error output:", errorOutput.slice(0, 3_000));
+    lines.push("", "Error output:", errorOutput.slice(0, 2_000));
   }
 
   return lines.join("\n");
@@ -295,6 +321,7 @@ const buildFailureText = (
 
 interface RunOptions {
   hook?: boolean | undefined;
+  iterations?: string | undefined;
 }
 
 export const runCommand = async (options: RunOptions = {}): Promise<void> => {
@@ -318,6 +345,16 @@ export const runCommand = async (options: RunOptions = {}): Promise<void> => {
   const config     = loadConfig(cwd);
   const failureCtx = loadFailureContext(cwd);
   resetSessionUsage();
+
+  // --iterations flag overrides persisted value for this run only
+  if (options.iterations !== undefined) {
+    const n = parseInt(options.iterations, 10);
+    if (!isNaN(n) && n >= MIN_ITERATIONS && n <= MAX_ITERATIONS) {
+      config.evaluator.maxIterations = n;
+    } else {
+      p.log.warn(`Invalid --iterations value "${options.iterations}" — must be ${MIN_ITERATIONS}–${MAX_ITERATIONS}. Using default.`);
+    }
+  }
 
   // -- 0. Project scan --
   const scan = scanProject(cwd);
@@ -415,16 +452,19 @@ export const runCommand = async (options: RunOptions = {}): Promise<void> => {
     // -- 8. Write report --
     const usage      = getSessionUsage();
     const reportPath = await writeRunReport(cwd, fileReports, usage);
-    const allPassed  = fileReports.every((r) => r.status === "pass");
 
-    const tokenLine = (usage.promptTokens + usage.completionTokens) > 0
-      ? color.dim(`  ↑ ${usage.promptTokens.toLocaleString()} / ↓ ${usage.completionTokens.toLocaleString()} tokens`)
-      : "";
+    const hasFailed = fileReports.some((r) => r.status === "fail");
+    const hasErrors = fileReports.some((r) => r.status === "error");
 
-    p.log.info(`Report → ${reportPath.replace(cwd + "/", "")}${tokenLine ? "\n" + tokenLine : ""}`);
+    const tokenSummary = formatTokenSummary(usage);
+    p.log.info(`Report → ${reportPath.replace(cwd + "/", "")}${tokenSummary ? "\n" + color.dim(`  ${tokenSummary}`) : ""}`);
 
-    if (allPassed) {
+    if (!hasFailed && !hasErrors) {
       p.outro(color.green("QA passed."));
+    } else if (hasErrors && !hasFailed) {
+      // Tests couldn't run (0 test cases, infra error) but none actually failed
+      p.log.warn("Could not run tests for some files — check generated code or Playwright setup.");
+      p.outro("Run " + color.cyan("`qagent explain`") + " for details.");
     } else {
       p.log.error("QA issues found.");
       p.outro("Run " + color.cyan("`qagent explain`") + " to understand the failures.");

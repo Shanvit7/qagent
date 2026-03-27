@@ -5,15 +5,15 @@ import {
   readModel,
   writeProvider,
   writeModel,
-} from "../../config/loader.js";
+} from "@/config/loader";
 import {
   CLOUD_MODELS,
   listOllamaModels,
   isOllamaRunning,
   hasApiKey,
   envVarName,
-} from "../../providers/index.js";
-import type { ProviderName } from "../../providers/index.js";
+} from "@/providers/index";
+import type { ProviderName } from "@/providers/index";
 
 export const modelsCommand = async (): Promise<void> => {
   p.intro(color.cyan("qagent models"));

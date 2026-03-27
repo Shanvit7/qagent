@@ -8,7 +8,7 @@
 
 import { readFileSync } from "node:fs";
 import { resolve, basename } from "node:path";
-import { Project, SyntaxKind } from "ts-morph";
+
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 

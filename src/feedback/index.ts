@@ -12,7 +12,7 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import type { FileReport } from "../reporter/index.js";
+import type { FileReport } from "@/reporter/index";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

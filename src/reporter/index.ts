@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, appendFileSync } fr
 import { join, basename } from "node:path";
 import color from "picocolors";
 import simpleGit from "simple-git";
-import type { TokenUsage } from "../providers/index.js";
+import type { TokenUsage } from "@/providers/index";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -147,7 +147,7 @@ const buildMarkdown = (report: RunReport): string => {
 
   lines.push(`---`);
   const tokenSuffix = report.tokenUsage
-    ? ` · ↑ ${report.tokenUsage.promptTokens.toLocaleString()} / ↓ ${report.tokenUsage.completionTokens.toLocaleString()} tokens`
+    ? ` · in ${report.tokenUsage.promptTokens.toLocaleString()} · out ${report.tokenUsage.completionTokens.toLocaleString()} tokens`
     : "";
   lines.push(`*${report.totalPassed} passed · ${report.totalFailed} failed · ${report.totalMs}ms total${tokenSuffix}*`);
 

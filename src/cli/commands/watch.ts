@@ -11,18 +11,18 @@ import * as p from "@clack/prompts";
 import color from "picocolors";
 import { watch, existsSync } from "node:fs";
 import { join } from "node:path";
-import { getStagedFiles } from "../../git/staged.js";
-import { classifyStagedFiles } from "../../classifier/index.js";
-import { analyzeFile } from "../../analyzer/index.js";
-import { generateTests, type GenerateTestsOptions } from "../../generator/index.js";
-import { runPlaywrightTest } from "../../runner/index.js";
-import { evaluateTests, buildRefinementPrompt } from "../../evaluator/index.js";
-import { refineTests } from "../../generator/index.js";
-import { loadConfig } from "../../config/loader.js";
-import { scanProject, writeScanCache, scanToMarkdown } from "../../scanner/index.js";
-import { buildFileContext } from "../../context/index.js";
-import { buildRouteMap, findRoutesForFile, updateRouteMap, type RouteMap } from "../../routes/index.js";
-import { startServer, type ServerHandle } from "../../server/index.js";
+import { getStagedFiles } from "@/git/staged";
+import { classifyStagedFiles } from "@/classifier/index";
+import { analyzeFile } from "@/analyzer/index";
+import { generateTests, type GenerateTestsOptions } from "@/generator/index";
+import { runPlaywrightTest } from "@/runner/index";
+import { evaluateTests, buildRefinementPrompt } from "@/evaluator/index";
+import { refineTests } from "@/generator/index";
+import { loadConfig } from "@/config/loader";
+import { scanProject, writeScanCache, scanToMarkdown } from "@/scanner/index";
+import { buildFileContext } from "@/context/index";
+import { buildRouteMap, findRoutesForFile, updateRouteMap, type RouteMap } from "@/routes/index";
+import { startServer, type ServerHandle } from "@/server/index";
 
 
 // ─── State ────────────────────────────────────────────────────────────────────

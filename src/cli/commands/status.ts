@@ -2,9 +2,9 @@ import * as p from "@clack/prompts";
 import color from "picocolors";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { readProvider, readModel } from "../../config/loader.js";
-import { isOllamaRunning, listOllamaModels, hasApiKey, envVarName } from "../../providers/index.js";
-import type { ProviderName } from "../../providers/index.js";
+import { readProvider, readModel, readIterations, DEFAULT_ITERATIONS } from "@/config/loader";
+import { isOllamaRunning, listOllamaModels, hasApiKey, envVarName } from "@/providers/index";
+import type { ProviderName } from "@/providers/index";
 
 type CheckStatus = "pass" | "warn" | "fail";
 
@@ -110,10 +110,16 @@ export const statusCommand = async (): Promise<void> => {
 
   if (provider && model) {
     const source = process.env["QAGENT_MODEL"] ? "env var" : "~/.qagentrc";
-    p.log.info(`Model: ${color.bold(model)} ${color.dim(`(${provider}, ${source})`)}`);
+    p.log.info(`Model:      ${color.bold(model)} ${color.dim(`(${provider}, ${source})`)}`);
   } else {
     p.log.warn("No model configured — run " + color.cyan("qagent models"));
   }
+
+  const iterations = readIterations();
+  p.log.info(
+    `Iterations: ${color.bold(String(iterations))}` +
+    color.dim(iterations === DEFAULT_ITERATIONS ? "  (recommended)  qagent config iterations" : "  qagent config iterations"),
+  );
 
   const checks: CheckItem[] = [
     checkSkillFile(cwd),

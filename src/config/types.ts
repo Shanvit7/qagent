@@ -1,4 +1,4 @@
-import type { ProviderName } from "../providers/index.js";
+import type { ProviderName } from "@/providers/index";
 
 export type QaLens = "render" | "interaction" | "state" | "edge-cases" | "security";
 

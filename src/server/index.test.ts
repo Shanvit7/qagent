@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { detectDevCommand, getAvailablePort } from "./index.js";
+import { detectDevCommand, getAvailablePort } from "./index";
 
 const TMP = join(process.cwd(), ".test-server-tmp");
 

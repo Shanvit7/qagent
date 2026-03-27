@@ -1,8 +1,8 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { homedir } from "node:os";
-import type { QAgentConfig, QaLens } from "./types.js";
-import type { ProviderName } from "../providers/index.js";
+import type { QAgentConfig, QaLens } from "./types";
+import type { ProviderName } from "@/providers/index";
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
@@ -91,6 +91,30 @@ export const writeModel = (model: string): void => {
 export const isConfigured = (): boolean =>
   readProvider() !== undefined && readModel() !== undefined;
 
+// ─── Iterations (stored in ~/.qagentrc) ──────────────────────────────────────
+
+export const MIN_ITERATIONS = 3;
+export const MAX_ITERATIONS = 8;
+export const DEFAULT_ITERATIONS = 3;
+
+export const readIterations = (): number => {
+  const env = process.env["QAGENT_ITERATIONS"];
+  if (env) {
+    const n = parseInt(env, 10);
+    if (!isNaN(n)) return Math.min(MAX_ITERATIONS, Math.max(MIN_ITERATIONS, n));
+  }
+  const rc = readRcValue("iterations");
+  if (rc) {
+    const n = parseInt(rc, 10);
+    if (!isNaN(n)) return Math.min(MAX_ITERATIONS, Math.max(MIN_ITERATIONS, n));
+  }
+  return DEFAULT_ITERATIONS;
+};
+
+export const writeIterations = (n: number): void => {
+  writeRcValue("iterations", String(n));
+};
+
 // ─── .qagent/config.json ─────────────────────────────────────────────────────
 
 const readPersistedConfig = (cwd: string): PersistedConfig => {
@@ -164,7 +188,7 @@ export const loadConfig = (cwd: string = process.cwd()): QAgentConfig => {
     classifier: { skipTrivial: persisted.skipTrivial ?? true },
     evaluator: {
       enabled: persisted.evaluator?.enabled ?? true,
-      maxIterations: persisted.evaluator?.maxIterations ?? 3,
+      maxIterations: readIterations(),
       acceptThreshold: persisted.evaluator?.acceptThreshold ?? 7,
     },
     ...(skillContext ? { skillContext } : {}),

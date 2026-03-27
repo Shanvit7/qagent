@@ -1,7 +1,7 @@
 import * as p from "@clack/prompts";
 import color from "picocolors";
-import { loadConfig, writePersistedConfig } from "../../config/loader.js";
-import type { QaLens } from "../../config/types.js";
+import { loadConfig, writePersistedConfig } from "@/config/loader";
+import type { QaLens } from "@/config/types";
 
 export const lensCommand = async (): Promise<void> => {
   const cwd    = process.cwd();

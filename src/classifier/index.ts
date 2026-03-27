@@ -13,7 +13,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { Project, SyntaxKind, type SourceFile, type Node } from "ts-morph";
-import type { StagedFile } from "../git/staged.js";
+import type { StagedFile } from "@/git/staged";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

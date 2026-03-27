@@ -6,9 +6,9 @@ import {
   isOllamaRunning,
   hasApiKey,
   envVarName,
-} from "../providers/index.js";
-import type { ProviderName } from "../providers/index.js";
-import { writeProvider, writeModel, readProvider, readModel } from "../config/loader.js";
+} from "@/providers/index";
+import type { ProviderName } from "@/providers/index";
+import { writeProvider, writeModel, readProvider, readModel } from "@/config/loader";
 
 /**
  * Interactive provider + model selection for the init wizard.

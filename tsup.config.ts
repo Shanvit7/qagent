@@ -1,4 +1,5 @@
 import { defineConfig } from "tsup";
+import { resolve } from "node:path";
 
 export default defineConfig({
   entry: { "cli/index": "src/cli/index.ts" },
@@ -12,4 +13,7 @@ export default defineConfig({
   sourcemap: false,
   shims: true,     // polyfill __dirname / __filename for ESM
   treeshake: true,
+  alias: {
+    "@": resolve(__dirname, "src"),
+  },
 });

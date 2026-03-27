@@ -2,7 +2,7 @@ import * as p from "@clack/prompts";
 import color from "picocolors";
 import { writeFileSync, existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { SKILL_TEMPLATE, IDE_PROMPT } from "../../skill/template.js";
+import { SKILL_TEMPLATE, IDE_PROMPT } from "@/skill/template";
 
 const SKILL_FILE = "qagent-skill.md";
 

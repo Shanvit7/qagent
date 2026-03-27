@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { buildRouteMap, findRoutesForFile } from "./index.js";
+import { buildRouteMap, findRoutesForFile } from "./index";
 
 const TMP = join(process.cwd(), ".test-routes-tmp");
 

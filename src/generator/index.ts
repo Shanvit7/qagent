@@ -3,12 +3,12 @@
  * for routes that render changed components.
  */
 
-import type { FileAnalysis, ComponentType } from "../analyzer/index.js";
-import type { QaLens, AiConfig, QAgentConfig } from "../config/types.js";
-import type { FileContext } from "../context/index.js";
-import { runSecurityAnalysis } from "../agent/security.js";
-import { generate } from "../providers/index.js";
-import { HARD_RULES } from "../evaluator/index.js";
+import type { FileAnalysis, ComponentType } from "@/analyzer/index";
+import type { QaLens, AiConfig, QAgentConfig } from "@/config/types";
+import type { FileContext } from "@/context/index";
+import { runSecurityAnalysis } from "@/agent/security";
+import { generate } from "@/providers/index";
+import { HARD_RULES } from "@/evaluator/index";
 
 export interface GeneratedTests {
   filePath: string;

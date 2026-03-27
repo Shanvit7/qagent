@@ -471,8 +471,30 @@ const accrue = (prompt: number, completion: number): void => {
   _session.completionTokens += completion;
 };
 
-export const getSessionUsage  = (): Readonly<TokenUsage> => ({ ..._session });
+export const getSessionUsage   = (): Readonly<TokenUsage> => ({ ..._session });
 export const resetSessionUsage = (): void => { _session = { promptTokens: 0, completionTokens: 0 }; };
+
+/**
+ * Diff two usage snapshots and return a formatted string.
+ * Format: "in 1,234 · out 567"  — matches convention used by Claude Code,
+ * GitHub Copilot CLI, and OpenAI Playground (directional words, not symbols).
+ * Returns empty string when both counts are zero (AI was skipped).
+ */
+export const formatTokenDelta = (before: Readonly<TokenUsage>, after: Readonly<TokenUsage>): string => {
+  const inTokens  = after.promptTokens     - before.promptTokens;
+  const outTokens = after.completionTokens - before.completionTokens;
+  if (inTokens === 0 && outTokens === 0) return "";
+  return `in ${inTokens.toLocaleString()} · out ${outTokens.toLocaleString()}`;
+};
+
+/**
+ * Format a full usage snapshot as a summary line.
+ * Format: "in 14,364 · out 1,500 tokens"
+ */
+export const formatTokenSummary = (usage: Readonly<TokenUsage>): string => {
+  if (usage.promptTokens === 0 && usage.completionTokens === 0) return "";
+  return `in ${usage.promptTokens.toLocaleString()} · out ${usage.completionTokens.toLocaleString()} tokens`;
+};
 
 // ─── Unified API ─────────────────────────────────────────────────────────────
 

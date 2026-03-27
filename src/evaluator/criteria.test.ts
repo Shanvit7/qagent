@@ -5,7 +5,7 @@ import {
   allCriteriaPassed,
   buildCriteriaPromptSection,
   type EvaluationScore,
-} from "./criteria.js";
+} from "./criteria";
 
 describe("criteria", () => {
   describe("DEFAULT_CRITERIA", () => {

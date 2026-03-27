@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { loadConfig } from "./loader.js";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { loadConfig } from "./loader";
 
 describe("loadConfig", () => {
   const origEnv = { ...process.env };

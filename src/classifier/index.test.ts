@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { resolve } from "node:path";
-import { classifyFile } from "./index.js";
-import type { StagedFile } from "../git/staged.js";
+import { classifyFile } from "./index";
+import type { StagedFile } from "@/git/staged";
 
 const FIXTURES = resolve(import.meta.dirname, "__fixtures__");
 

@@ -13,11 +13,10 @@
 
 import * as p from "@clack/prompts";
 import color from "picocolors";
-import { readProvider, readModel } from "../config/loader.js";
-import { hasApiKey, envVarName, isOllamaRunning, listOllamaModels } from "../providers/index.js";
-import type { ProviderName } from "../providers/index.js";
-import { setupProvider } from "../setup/providers.js";
-import { detectPlaywrightBrowsers, ensurePlaywrightBrowsers } from "../runner/index.js";
+import { readProvider, readModel } from "@/config/loader";
+import { hasApiKey, envVarName, isOllamaRunning, listOllamaModels } from "@/providers/index";
+import { setupProvider } from "@/setup/providers";
+import { detectPlaywrightBrowsers, ensurePlaywrightBrowsers } from "@/runner/index";
 
 export interface PreflightResult {
   ok: boolean;

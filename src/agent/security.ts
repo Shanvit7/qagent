@@ -18,10 +18,10 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve, relative } from "node:path";
 import { execSync } from "node:child_process";
-import type { AiConfig } from "../config/types.js";
-import type { FileAnalysis } from "../analyzer/index.js";
-import { chat } from "../providers/index.js";
-import type { ChatMessage, ToolDef } from "../providers/index.js";
+import type { AiConfig } from "@/config/types";
+import type { FileAnalysis } from "@/analyzer/index";
+import { chat } from "@/providers/index";
+import type { ChatMessage, ToolDef } from "@/providers/index";
 
 export interface SecurityAgentResult {
   context: string;

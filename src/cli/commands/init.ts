@@ -2,14 +2,14 @@ import * as p from "@clack/prompts";
 import color from "picocolors";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { injectGitHook, detectHuskyDir } from "../../git/hook.js";
-import { detectPackageManager, runPm } from "../../utils/packageManager.js";
-import { setupProvider } from "../../setup/providers.js";
-import { ensureQAgentIgnored } from "../../reporter/index.js";
-import { writePersistedConfig, DEFAULT_LENSES } from "../../config/loader.js";
-import type { QaLens } from "../../config/types.js";
-import { SKILL_TEMPLATE } from "../../skill/template.js";
-import { detectPlaywrightBrowsers, ensurePlaywrightBrowsers } from "../../runner/index.js";
+import { injectGitHook, detectHuskyDir } from "@/git/hook";
+import { detectPackageManager, runPm } from "@/utils/packageManager";
+import { setupProvider } from "@/setup/providers";
+import { ensureQAgentIgnored } from "@/reporter/index";
+import { writePersistedConfig, DEFAULT_LENSES } from "@/config/loader";
+import type { QaLens } from "@/config/types";
+import { SKILL_TEMPLATE } from "@/skill/template";
+import { detectPlaywrightBrowsers, ensurePlaywrightBrowsers } from "@/runner/index";
 
 const SKILL_FILE = "qagent-skill.md";
 

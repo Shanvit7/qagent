@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parsePlaywrightJson } from "./index.js";
+import { parsePlaywrightJson } from "./index";
 
 describe("runner", () => {
   describe("parsePlaywrightJson", () => {

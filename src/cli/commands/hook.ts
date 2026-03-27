@@ -1,7 +1,7 @@
 import * as p from "@clack/prompts";
 import color from "picocolors";
-import { injectGitHook, removeGitHook, detectHuskyDir } from "../../git/hook.js";
-import { detectPackageManager } from "../../utils/packageManager.js";
+import { injectGitHook, removeGitHook, detectHuskyDir } from "@/git/hook";
+import { detectPackageManager } from "@/utils/packageManager";
 
 export const hookCommand = async (): Promise<void> => {
   const cwd = process.cwd();

@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { FileAnalysis } from "../analyzer/index.js";
-import type { AiConfig } from "../config/types.js";
+import type { FileAnalysis } from "@/analyzer/index";
+import type { AiConfig } from "@/config/types";
 
 vi.mock("../providers/index.js", () => ({
   generate: vi.fn(),
 }));
 
-import { evaluateTests, buildRefinementPrompt } from "./index.js";
-import { generate } from "../providers/index.js";
-import type { EvaluationResult } from "./criteria.js";
+import { evaluateTests, buildRefinementPrompt } from "./index";
+import { generate } from "@/providers/index";
+import type { EvaluationResult } from "./criteria";
 
 const mockGenerate = vi.mocked(generate);
 

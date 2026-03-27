@@ -6,9 +6,9 @@
  * to the AI alongside error messages for better diagnosis.
  */
 
-import type { AiConfig } from "../config/types.js";
-import type { FileAnalysis } from "../analyzer/index.js";
-import { generate } from "../providers/index.js";
+import type { AiConfig } from "@/config/types";
+import type { FileAnalysis } from "@/analyzer/index";
+import { generate } from "@/providers/index";
 import {
   type GradingCriterion,
   type EvaluationScore,
@@ -17,7 +17,7 @@ import {
   computeOverallScore,
   allCriteriaPassed,
   buildCriteriaPromptSection,
-} from "./criteria.js";
+} from "./criteria";
 
 // ─── Shared rules ─────────────────────────────────────────────────────────────
 
@@ -306,4 +306,4 @@ export const buildRefinementPrompt = (ctx: RefinementContext): string => {
   return sections.join("\n");
 };
 
-export { DEFAULT_CRITERIA, type GradingCriterion, type EvaluationScore, type EvaluationResult } from "./criteria.js";
+export { DEFAULT_CRITERIA, type GradingCriterion, type EvaluationScore, type EvaluationResult } from "./criteria";
