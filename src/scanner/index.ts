@@ -95,6 +95,8 @@ export const scanToMarkdown = (scan: ProjectScan): string => {
     lines.push(`- **Custom hooks:** \`${scan.customHooks.join("`, `")}\``);
   }
 
+
+
   return lines.join("\n");
 };
 

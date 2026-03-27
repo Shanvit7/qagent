@@ -4,15 +4,25 @@
  * Determines QA depth per staged file by mapping git diff line numbers to
  * structural regions in the source AST via ts-morph. No regex guessing —
  * we know exactly whether a changed line is inside a Props interface, a
- * function body, a JSX className attribute, a hook call, or an import.
+ * function body, a JSX event handler, an async expression, a conditional
+ * render, a hook call, or an import.
  *
- * Fast-path checks (deleted, assets, data files, renames) short-circuit
- * before any AST work. AST parsing (~5-15ms per file) only runs for
- * modified code files.
+ * Improvements over v1:
+ *   - Single AST pass (was 4 separate walks)
+ *   - Sub-regions inside function-body: event-handler, async-logic, conditional-render
+ *   - Custom hook dep detection (any use* call with dep array, not just builtins)
+ *   - New-file smart classification (utility / hook vs component)
+ *   - Prop-forwarding detection via AST, not regex
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { Project, SyntaxKind, type SourceFile, type Node } from "ts-morph";
+import { basename } from "node:path";
+import {
+  Project,
+  SyntaxKind,
+  type SourceFile,
+  type Node,
+} from "ts-morph";
 import type { StagedFile } from "@/git/staged";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -26,8 +36,11 @@ export type ChangeRegion =
   | "jsx-styling"
   | "jsx-cosmetic"
   | "jsx-markup"
-  | "function-body"
-  | "hook-deps"
+  | "event-handler"       // on* JSX attribute callback body — interaction signal
+  | "conditional-render"  // ternary / && / || in JSX return — render+state signal
+  | "async-logic"         // await expressions inside logic — state signal
+  | "function-body"       // general function body (fallback)
+  | "hook-deps"           // useEffect/useMemo/useCallback dep arrays
   | "server-action"
   | "exports";
 
@@ -58,7 +71,6 @@ const TRIVIAL_EXTENSIONS = new Set([
 ]);
 
 const CODE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]);
-
 const DATA_EXTENSIONS = new Set([".json", ".yaml", ".yml", ".toml", ".env"]);
 
 const getExtension = (filePath: string): string => {
@@ -67,9 +79,6 @@ const getExtension = (filePath: string): string => {
 };
 
 // ─── Diff line number parser ──────────────────────────────────────────────────
-// Walks unified diff hunks and extracts the new-file-side line numbers for
-// every added (+) line. Removed lines don't exist in the new file so they
-// don't increment the counter.
 
 const extractChangedLineNumbers = (diff: string): Set<number> => {
   const lines = diff.split("\n");
@@ -78,53 +87,37 @@ const extractChangedLineNumbers = (diff: string): Set<number> => {
 
   for (const line of lines) {
     const hunkMatch = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
-    if (hunkMatch) {
-      currentLine = parseInt(hunkMatch[1]!, 10);
-      continue;
-    }
-    if (line.startsWith("+") && !line.startsWith("+++")) {
-      changed.add(currentLine);
-      currentLine++;
-    } else if (line.startsWith("-") && !line.startsWith("---")) {
-      // Removed line — doesn't exist in new file, don't advance
-    } else if (currentLine > 0) {
-      currentLine++;
-    }
+    if (hunkMatch) { currentLine = parseInt(hunkMatch[1]!, 10); continue; }
+    if (line.startsWith("+") && !line.startsWith("+++")) { changed.add(currentLine); currentLine++; }
+    else if (line.startsWith("-") && !line.startsWith("---")) { /* removed — don't advance */ }
+    else if (currentLine > 0) { currentLine++; }
   }
   return changed;
 };
 
-// ─── AST region mapper ────────────────────────────────────────────────────────
-// Parses the source file and builds an array of LineRange entries mapping
-// line spans to structural regions. Regions can overlap; the classifier
-// picks the most specific one per line.
+// ─── Region specificity ───────────────────────────────────────────────────────
+// Higher = wins when multiple regions cover the same line.
 
 const REGION_SPECIFICITY: Record<ChangeRegion, number> = {
-  "jsx-styling":   10,
-  "jsx-cosmetic":   9,
-  "hook-deps":      8,
-  "jsx-markup":     7,
-  "server-action":  6,
-  "function-body":  5,
-  "props":          4,
-  "types":          3,
-  "exports":        2,
-  "imports":        1,
+  "event-handler":      12, // most specific — we know the exact interaction surface
+  "jsx-styling":        11,
+  "jsx-cosmetic":       10,
+  "conditional-render":  9, // inside JSX, more specific than jsx-markup
+  "hook-deps":           8,
+  "jsx-markup":          7,
+  "async-logic":         6, // inside function body, more specific than function-body
+  "server-action":       5,
+  "function-body":       4,
+  "props":               3,
+  "types":               2,
+  "exports":             1,
+  "imports":             0,
 };
 
-const HOOK_NAMES = new Set(["useEffect", "useMemo", "useCallback", "useLayoutEffect"]);
-
-// ─── Styling & cosmetic attribute detection ──────────────────────────────────
-// Covers the full React/Next.js ecosystem: Tailwind, CSS Modules, CSS-in-JS,
-// MUI/Chakra sx, styled-components, Twin Macro, inline styles, etc.
+// ─── Attribute classification ─────────────────────────────────────────────────
 
 const STYLING_ATTRIBUTES = new Set([
-  "className", "class",       // standard + JSX alias
-  "style",                    // inline styles
-  "sx",                       // MUI / Chakra UI / Theme UI
-  "css",                      // Emotion css prop / Stitches
-  "tw",                       // Twin Macro
-  "cs",                       // Twin Macro secondary
+  "className", "class", "style", "sx", "css", "tw", "cs",
 ]);
 
 const COSMETIC_ATTRIBUTES = new Set([
@@ -138,17 +131,49 @@ const isCosmeticAttribute = (name: string): boolean =>
   name.startsWith("data-") ||
   name.startsWith("aria-");
 
-// Tags for CSS-in-JS tagged template literals (css``, tw``, keyframes``, etc.)
 const STYLING_TAGS = new Set(["css", "tw", "injectGlobal", "createGlobalStyle", "keyframes"]);
 
+
+
+// ─── AST helpers ─────────────────────────────────────────────────────────────
+
 const addRange = (ranges: LineRange[], node: Node, region: ChangeRegion, name?: string): void => {
-  ranges.push({
-    start: node.getStartLineNumber(),
-    end: node.getEndLineNumber(),
-    region,
-    name,
-  });
+  ranges.push({ start: node.getStartLineNumber(), end: node.getEndLineNumber(), region, name });
 };
+
+/** Walk parent chain to check if node is inside a JSX expression container. */
+const isInsideJsxExpression = (node: Node): boolean => {
+  let cur = node.getParent();
+  while (cur) {
+    const k = cur.getKind();
+    if (k === SyntaxKind.JsxExpression) return true;
+    // Stop at function boundaries — don't leak across component boundaries
+    if (
+      k === SyntaxKind.ArrowFunction ||
+      k === SyntaxKind.FunctionDeclaration ||
+      k === SyntaxKind.FunctionExpression
+    ) return false;
+    cur = cur.getParent();
+  }
+  return false;
+};
+
+/** Extract a function's name from its declaration or parent variable declaration. */
+const getFunctionName = (node: Node): string | undefined => {
+  if (node.getKind() === SyntaxKind.FunctionDeclaration) {
+    return node.asKindOrThrow(SyntaxKind.FunctionDeclaration).getName();
+  }
+  const parent = node.getParent();
+  if (parent?.getKind() === SyntaxKind.VariableDeclaration) {
+    return parent.asKindOrThrow(SyntaxKind.VariableDeclaration).getName();
+  }
+  return undefined;
+};
+
+/** True when a JSX attribute name is an event handler (on + PascalCase). */
+const isEventHandlerAttr = (name: string): boolean => /^on[A-Z]/.test(name);
+
+// ─── Single-pass AST region mapper ───────────────────────────────────────────
 
 const buildLineRegionMap = (filePath: string): LineRange[] => {
   if (!existsSync(filePath)) return [];
@@ -162,370 +187,391 @@ const buildLineRegionMap = (filePath: string): LineRange[] => {
     sourceText.trimStart().startsWith('"use server"') ||
     sourceText.trimStart().startsWith("'use server'");
 
-  // Imports
-  for (const node of sf.getImportDeclarations()) {
-    addRange(ranges, node, "imports");
-  }
+  const walk = (node: Node): void => {
+    switch (node.getKind()) {
 
-  // Interfaces
-  for (const node of sf.getInterfaces()) {
-    const name = node.getName();
-    addRange(ranges, node, name.endsWith("Props") ? "props" : "types", name);
-  }
+      // ── Structural ──────────────────────────────────────────────────────
+      case SyntaxKind.ImportDeclaration:
+        addRange(ranges, node, "imports");
+        break;
 
-  // Type aliases
-  for (const node of sf.getTypeAliases()) {
-    const name = node.getName();
-    addRange(ranges, node, name.endsWith("Props") ? "props" : "types", name);
-  }
+      case SyntaxKind.InterfaceDeclaration: {
+        const name = node.asKindOrThrow(SyntaxKind.InterfaceDeclaration).getName();
+        addRange(ranges, node, name.endsWith("Props") ? "props" : "types", name);
+        break;
+      }
 
-  // Export declarations (re-exports like `export { foo } from './bar'`)
-  for (const node of sf.getExportDeclarations()) {
-    addRange(ranges, node, "exports");
-  }
+      case SyntaxKind.TypeAliasDeclaration: {
+        const name = node.asKindOrThrow(SyntaxKind.TypeAliasDeclaration).getName();
+        addRange(ranges, node, name.endsWith("Props") ? "props" : "types", name);
+        break;
+      }
 
-  // Export assignments (`export default ...`)
-  const exportAssignment = sf.getExportAssignment(() => true);
-  if (exportAssignment) {
-    addRange(ranges, exportAssignment, "exports");
-  }
+      case SyntaxKind.ExportDeclaration:
+      case SyntaxKind.ExportAssignment:
+        addRange(ranges, node, "exports");
+        break;
 
-  // Functions (declarations and variable-declared arrow functions)
-  const walkFunctions = (node: Node): void => {
-    if (
-      node.getKind() === SyntaxKind.FunctionDeclaration ||
-      node.getKind() === SyntaxKind.ArrowFunction ||
-      node.getKind() === SyntaxKind.FunctionExpression ||
-      node.getKind() === SyntaxKind.MethodDeclaration
-    ) {
-      let funcName: string | undefined;
+      // ── Functions ───────────────────────────────────────────────────────
+      case SyntaxKind.FunctionDeclaration:
+      case SyntaxKind.ArrowFunction:
+      case SyntaxKind.FunctionExpression:
+      case SyntaxKind.MethodDeclaration: {
+        const hasInlineUseServer =
+          node.getText().includes('"use server"') ||
+          node.getText().includes("'use server'");
+        const region: ChangeRegion =
+          isServerActionFile || hasInlineUseServer ? "server-action" : "function-body";
+        addRange(ranges, node, region, getFunctionName(node));
+        break;
+      }
 
-      if (node.getKind() === SyntaxKind.FunctionDeclaration) {
-        funcName = node.asKindOrThrow(SyntaxKind.FunctionDeclaration).getName();
-      } else {
-        const parent = node.getParent();
-        if (parent?.getKind() === SyntaxKind.VariableDeclaration) {
-          funcName = parent.asKindOrThrow(SyntaxKind.VariableDeclaration).getName();
+      // ── JSX ─────────────────────────────────────────────────────────────
+      case SyntaxKind.JsxElement:
+      case SyntaxKind.JsxSelfClosingElement:
+        addRange(ranges, node, "jsx-markup");
+        break;
+
+      case SyntaxKind.JsxAttribute: {
+        const attr = node.asKindOrThrow(SyntaxKind.JsxAttribute);
+        const attrName = attr.getNameNode().getText();
+
+        if (STYLING_ATTRIBUTES.has(attrName)) {
+          addRange(ranges, node, "jsx-styling");
+        } else if (isCosmeticAttribute(attrName)) {
+          addRange(ranges, node, "jsx-cosmetic");
+        } else if (isEventHandlerAttr(attrName)) {
+          // Mark the VALUE of on* attributes as event-handler so changed
+          // handler bodies register as interaction changes, not generic logic.
+          const value = attr.getInitializer();
+          if (value) addRange(ranges, value, "event-handler", attrName);
+          else        addRange(ranges, node, "event-handler", attrName);
         }
+        break;
       }
 
-      const hasInlineUseServer = node.getText().includes('"use server"') || node.getText().includes("'use server'");
-      const region: ChangeRegion = (isServerActionFile || hasInlineUseServer) ? "server-action" : "function-body";
-      addRange(ranges, node, region, funcName);
-    }
+      // ── CSS-in-JS tagged templates ───────────────────────────────────────
+      case SyntaxKind.TaggedTemplateExpression: {
+        const tagged = node.asKindOrThrow(SyntaxKind.TaggedTemplateExpression);
+        const tag = tagged.getTag().getText();
+        if (STYLING_TAGS.has(tag) || tag.startsWith("styled.") || tag.startsWith("styled(")) {
+          addRange(ranges, node, "jsx-styling", tag);
+        }
+        break;
+      }
 
-    node.forEachChild(walkFunctions);
-  };
+      // ── Hook calls ───────────────────────────────────────────────────────
+      // Detect structurally: any use* call whose last argument is an array
+      // literal has a dependency array — no hardcoded names needed.
+      case SyntaxKind.CallExpression: {
+        const call = node.asKindOrThrow(SyntaxKind.CallExpression);
+        const callee = call.getExpression().getText();
+        if (/^use[A-Z]/.test(callee)) {
+          const args = call.getArguments();
+          const last = args[args.length - 1];
+          if (last?.getKind() === SyntaxKind.ArrayLiteralExpression) {
+            addRange(ranges, node, "hook-deps", callee);
+          }
+        }
+        break;
+      }
 
-  // JSX elements, styling attributes, and cosmetic attributes
-  const walkJsx = (node: Node): void => {
-    if (
-      node.getKind() === SyntaxKind.JsxElement ||
-      node.getKind() === SyntaxKind.JsxSelfClosingElement
-    ) {
-      addRange(ranges, node, "jsx-markup");
-    }
+      // ── Async logic ──────────────────────────────────────────────────────
+      // AwaitExpression = data fetching, async state updates, side effects.
+      // More specific than function-body; drives state lens.
+      case SyntaxKind.AwaitExpression:
+        addRange(ranges, node, "async-logic");
+        break;
 
-    if (node.getKind() === SyntaxKind.JsxAttribute) {
-      const attr = node.asKindOrThrow(SyntaxKind.JsxAttribute);
-      const attrName = attr.getNameNode().getText();
-      if (STYLING_ATTRIBUTES.has(attrName)) {
-        addRange(ranges, node, "jsx-styling");
-      } else if (isCosmeticAttribute(attrName)) {
-        addRange(ranges, node, "jsx-cosmetic");
+      // ── Conditional rendering ────────────────────────────────────────────
+      // Ternary or && / || used as JSX conditional — drives render+state lenses.
+      case SyntaxKind.ConditionalExpression: {
+        if (isInsideJsxExpression(node)) {
+          addRange(ranges, node, "conditional-render");
+        }
+        break;
+      }
+
+      case SyntaxKind.BinaryExpression: {
+        const bin = node.asKindOrThrow(SyntaxKind.BinaryExpression);
+        const op  = bin.getOperatorToken().getKind();
+        if (
+          (op === SyntaxKind.AmpersandAmpersandToken || op === SyntaxKind.BarBarToken) &&
+          isInsideJsxExpression(node)
+        ) {
+          addRange(ranges, node, "conditional-render");
+        }
+        break;
       }
     }
 
-    node.forEachChild(walkJsx);
+    node.forEachChild(walk);
   };
 
-  // CSS-in-JS tagged templates: styled.div`...`, css`...`, tw`...`, keyframes`...`
-  const walkStyledTemplates = (node: Node): void => {
-    if (node.getKind() === SyntaxKind.TaggedTemplateExpression) {
-      const tagged = node.asKindOrThrow(SyntaxKind.TaggedTemplateExpression);
-      const tagText = tagged.getTag().getText();
-      if (
-        STYLING_TAGS.has(tagText) ||
-        tagText.startsWith("styled.") ||
-        tagText.startsWith("styled(")
-      ) {
-        addRange(ranges, node, "jsx-styling", tagText);
-      }
-    }
-    node.forEachChild(walkStyledTemplates);
-  };
-
-  // Hook calls (useEffect, useMemo, useCallback, useLayoutEffect)
-  const walkHooks = (node: Node): void => {
-    if (node.getKind() === SyntaxKind.CallExpression) {
-      const call = node.asKindOrThrow(SyntaxKind.CallExpression);
-      const expr = call.getExpression();
-      const callName = expr.getText();
-      if (HOOK_NAMES.has(callName)) {
-        addRange(ranges, node, "hook-deps", callName);
-      }
-    }
-    node.forEachChild(walkHooks);
-  };
-
-  sf.forEachChild(walkFunctions);
-  sf.forEachChild(walkJsx);
-  sf.forEachChild(walkHooks);
-  sf.forEachChild(walkStyledTemplates);
-
+  sf.forEachChild(walk);
   return ranges;
 };
 
 // ─── Line-to-region mapping ───────────────────────────────────────────────────
-// For each changed line number, find all overlapping regions and pick the
-// most specific one.
 
 const mapLinesToRegions = (changedLines: Set<number>, ranges: LineRange[]): Set<ChangeRegion> => {
   const regions = new Set<ChangeRegion>();
 
   for (const lineNum of changedLines) {
-    let bestRegion: ChangeRegion | null = null;
-    let bestSpecificity = -1;
+    let best: ChangeRegion | null = null;
+    let bestSpec = -1;
 
     for (const range of ranges) {
       if (lineNum >= range.start && lineNum <= range.end) {
         const spec = REGION_SPECIFICITY[range.region];
-        if (spec > bestSpecificity) {
-          bestSpecificity = spec;
-          bestRegion = range.region;
-        }
+        if (spec > bestSpec) { bestSpec = spec; best = range.region; }
       }
     }
 
-    if (bestRegion) {
-      regions.add(bestRegion);
-    }
+    if (best) regions.add(best);
   }
 
   return regions;
 };
 
 // ─── Styling impact analysis ──────────────────────────────────────────────────
-// Determines how much a styling change can affect what Playwright observes.
-//
-// Why this matters: not all CSS changes are cosmetic. Some affect whether
-// elements are visible, reachable, or interactable in the browser:
-//
-//   VISIBILITY  — element may become hidden or unreachable entirely
-//                 (display:none, visibility:hidden, opacity:0, w-0, h-0, hidden)
-//                 → LIGHTWEIGHT: run render checks to verify elements still appear
-//
-//   LAYOUT      — element repositioned, clipped, or interaction-blocked
-//                 (overflow:hidden, pointer-events:none, transform, position, z-index)
-//                 → LIGHTWEIGHT: verify elements are still reachable/clickable
-//
-//   COSMETIC    — pure visual change (color, font, border-radius, padding, margin)
-//                 Playwright assertions don't catch these; visual regression testing
-//                 (screenshot diffs) is the right tool for this class of change.
-//                 → SKIP
 
 type StylingImpact = "cosmetic" | "layout" | "visibility";
 
-/**
- * Scan the added lines of a diff for styling properties that can affect
- * element visibility or Playwright's ability to interact with them.
- */
 const analyzeStylingImpact = (diff: string): StylingImpact => {
-  // Collect only added/changed lines — removals don't create new problems
   const added = diff
     .split("\n")
     .filter((l) => l.startsWith("+") && !l.startsWith("+++"))
     .join(" ");
 
-  // ── Layout-affecting (Tailwind) — checked FIRST to avoid false matches ────────
-  // overflow-hidden must be detected before the \bhidden\b visibility check because
-  // `hidden` in `overflow-hidden` sits after a `-` (non-word char), so \bhidden\b
-  // would wrongly match it and return "visibility" instead of "layout".
-  if (/\boverflow-(?:x-|y-)?hidden\b/.test(added))       return "layout";
-  if (/\bpointer-events-none\b/.test(added))             return "layout";
-  // Framer-motion / Tailwind translate patterns: -translate-x-full, translate-y-8, etc.
-  if (/\b-?translate-[xy]-/.test(added))                 return "layout";
-  if (/\b(?:fixed|absolute|sticky)\b/.test(added))       return "layout"; // positioning
-  if (/\bz-(?:\d+|auto)\b/.test(added))                  return "layout"; // stacking order
+  // Layout — checked FIRST (overflow-hidden must beat \bhidden\b)
+  if (/\boverflow-(?:x-|y-)?hidden\b/.test(added))              return "layout";
+  if (/\bpointer-events-none\b/.test(added))                    return "layout";
+  if (/\b-?translate-[xy]-/.test(added))                        return "layout";
+  if (/\b(?:fixed|absolute|sticky)\b/.test(added))              return "layout";
+  if (/\bz-(?:\d+|auto)\b/.test(added))                         return "layout";
 
-  // ── Visibility-breaking (Tailwind) ──────────────────────────────────────────
-  // overflow-hidden is already handled above — remaining hidden/invisible classes are
-  // pure visibility killers (display:none, visibility:hidden, etc.)
-  if (/\bhidden\b/.test(added))      return "visibility"; // display: none
-  if (/\binvisible\b/.test(added))   return "visibility"; // visibility: hidden
-  if (/\bopacity-0\b/.test(added))   return "visibility"; // opacity: 0
-  if (/\bw-0\b/.test(added))         return "visibility"; // width: 0
-  if (/\bh-0\b/.test(added))         return "visibility"; // height: 0
-  if (/\bscale-0\b/.test(added))     return "visibility"; // transform: scale(0)
-  if (/\bsr-only\b/.test(added))     return "visibility"; // visually hidden (screen-reader only)
+  // Visibility (Tailwind)
+  if (/\bhidden\b/.test(added))                                  return "visibility";
+  if (/\binvisible\b/.test(added))                               return "visibility";
+  if (/\bopacity-0\b/.test(added))                               return "visibility";
+  if (/\b[wh]-0\b/.test(added))                                  return "visibility";
+  if (/\bscale-0\b/.test(added))                                 return "visibility";
+  if (/\bsr-only\b/.test(added))                                 return "visibility";
 
-  // ── Visibility-breaking (CSS / inline style / sx) ──────────────────────────
-  // JSX inline styles use JS string values: `display: "none"`, `visibility: "hidden"`, etc.
-  // The regex allows for optional quotes around the value to handle both CSS and JSX syntax.
-  if (/display\s*:\s*["']?none["']?/.test(added))                       return "visibility";
-  if (/visibility\s*:\s*["']?hidden["']?/.test(added))                  return "visibility";
-  if (/opacity\s*:\s*["']?0(?:[^.]|["']|$)/.test(added))               return "visibility"; // 0 but not 0.5
+  // Visibility (CSS / inline style)
+  if (/display\s*:\s*["']?none["']?/.test(added))                return "visibility";
+  if (/visibility\s*:\s*["']?hidden["']?/.test(added))           return "visibility";
+  if (/opacity\s*:\s*["']?0(?:[^.]|["']|$)/.test(added))        return "visibility";
   if (/(?:width|height)\s*:\s*["']?0(?:px)?["']?[,;\s}]/.test(added)) return "visibility";
 
-  // ── Layout-affecting (CSS / inline style / sx) ──────────────────────────────
-  if (/overflow\s*:/.test(added))                        return "layout";
-  if (/pointer-?[Ee]vents\s*:/.test(added))              return "layout"; // CSS: pointer-events / JSX: pointerEvents
+  // Layout (CSS / inline style)
+  if (/overflow\s*:/.test(added))                                return "layout";
+  if (/pointer-?[Ee]vents\s*:/.test(added))                      return "layout";
   if (/transform\s*:|translateX|translateY|translate3d/.test(added)) return "layout";
-  if (/position\s*:\s*["']?(?:absolute|fixed|sticky)/.test(added))    return "layout";
-  if (/z-index\s*:/.test(added))                         return "layout";
+  if (/position\s*:\s*["']?(?:absolute|fixed|sticky)/.test(added)) return "layout";
+  if (/z-index\s*:/.test(added))                                 return "layout";
 
-  // Everything else: colors, fonts, border-radius, padding, margin, etc.
   return "cosmetic";
+};
+
+// ─── Prop-forwarding detection (AST-based) ───────────────────────────────────
+// Returns true when every changed line in a function-body+jsx-styling mix
+// is purely about forwarding a styling prop (className/style etc.) through.
+// Uses the AST ranges to verify — more precise than the old regex approach.
+
+const isStylingPropForwarding = (
+  changedLines: Set<number>,
+  ranges: LineRange[],
+): boolean => {
+  for (const line of changedLines) {
+    // Find the most specific region for this line
+    let best: ChangeRegion | null = null;
+    let bestSpec = -1;
+    for (const r of ranges) {
+      if (line >= r.start && line <= r.end) {
+        const s = REGION_SPECIFICITY[r.region];
+        if (s > bestSpec) { bestSpec = s; best = r.region; }
+      }
+    }
+    // Any line that isn't styling/props/types/imports is non-trivial
+    if (best && !["jsx-styling", "props", "types", "imports", "exports"].includes(best)) {
+      return false;
+    }
+  }
+  return true;
+};
+
+// ─── New file classification ──────────────────────────────────────────────────
+// New files don't have a diff to classify by region — we infer from shape.
+
+const classifyNewFile = (filePath: string, sourceText: string): ClassificationResult => {
+  const name = basename(filePath).replace(/\.[jt]sx?$/, "");
+
+  // Custom hook — file named useXxx or exports a useXxx function
+  if (/^use[A-Z]/.test(name) || /export\s+(?:const|function)\s+use[A-Z]/.test(sourceText)) {
+    return {
+      action: "LIGHTWEIGHT",
+      reason: "New custom hook — verify behaviour through the pages that use it",
+    };
+  }
+
+  // Pure utility — no JSX, no default export of a component
+  const hasJsx = /<[A-Z][A-Za-z]*[\s/>]|<>|<\/[A-Za-z]/.test(sourceText);
+  const hasDefaultExport = /export\s+default/.test(sourceText);
+  if (!hasJsx && !hasDefaultExport) {
+    return {
+      action: "LIGHTWEIGHT",
+      reason: "New utility — verify its output is correct through pages that use it",
+    };
+  }
+
+  return { action: "FULL_QA", reason: "New component — run full browser coverage" };
 };
 
 // ─── Region-based classification ──────────────────────────────────────────────
 
-const classifyByRegions = (regions: Set<ChangeRegion>, diff: string): { action: ChangeAction; reason: string } => {
+const classifyByRegions = (
+  regions: Set<ChangeRegion>,
+  diff: string,
+  changedLines: Set<number>,
+  ranges: LineRange[],
+): { action: ChangeAction; reason: string } => {
   if (regions.size === 0) {
     return { action: "FULL_QA", reason: "Changed lines outside recognized structures" };
   }
 
   const all = [...regions];
 
-  // Import-only — no runtime behaviour changed, nothing for Playwright to catch
+  // ── Pure skip cases ────────────────────────────────────────────────────────
+
   if (all.every((r) => r === "imports")) {
     return { action: "SKIP", reason: "Import-only change — no browser-visible behaviour affected" };
   }
 
-  // Styling-only (className, style, sx, css, tw, styled-components, etc.)
-  // Impact determines depth: not all CSS changes are cosmetic.
-  if (all.every((r) => r === "jsx-styling" || r === "imports")) {
-    const impact = analyzeStylingImpact(diff);
-    if (impact === "visibility") {
-      return {
-        action: "LIGHTWEIGHT",
-        reason: "Styling change affects element visibility — verify elements still render and are reachable",
-      };
-    }
-    if (impact === "layout") {
-      return {
-        action: "LIGHTWEIGHT",
-        reason: "Styling change affects layout or interaction (overflow/transform/position) — verify elements are reachable",
-      };
-    }
-    return { action: "SKIP", reason: "Cosmetic styling change (color/font/spacing) — no browser behaviour to test" };
-  }
-
-  // Cosmetic attributes only (data-*, aria-*, id, placeholder, etc.)
   if (all.every((r) => r === "jsx-cosmetic" || r === "imports")) {
-    return { action: "SKIP", reason: "Cosmetic attribute change — no behaviour to regression-test" };
+    return { action: "SKIP", reason: "Cosmetic attribute change — no behaviour to test" };
   }
 
-  // Styling + cosmetic mix — run impact check on the styling side
-  if (all.every((r) => r === "jsx-styling" || r === "jsx-cosmetic" || r === "imports")) {
+  // ── Styling-only ───────────────────────────────────────────────────────────
+
+  const isStylingOnly = all.every(
+    (r) => r === "jsx-styling" || r === "jsx-cosmetic" || r === "imports",
+  );
+  if (isStylingOnly) {
     const impact = analyzeStylingImpact(diff);
-    if (impact === "visibility") {
-      return {
-        action: "LIGHTWEIGHT",
-        reason: "Styling change affects element visibility — verify elements still render and are reachable",
-      };
-    }
-    if (impact === "layout") {
-      return {
-        action: "LIGHTWEIGHT",
-        reason: "Styling change affects layout or interaction — verify elements are reachable",
-      };
-    }
-    return { action: "SKIP", reason: "Styling/cosmetic change — no browser behaviour to test" };
+    if (impact === "visibility") return { action: "LIGHTWEIGHT", reason: "Styling change affects element visibility — verify elements still render" };
+    if (impact === "layout")     return { action: "LIGHTWEIGHT", reason: "Styling change affects layout or interaction — verify elements are reachable" };
+    return { action: "SKIP", reason: "Cosmetic styling change — no browser behaviour to test" };
   }
 
-  // Types/props only — interface contract changed; verify rendered output still correct
-  const isTypeOnly = all.every((r) => r === "props" || r === "types" || r === "imports" || r === "exports");
-  if (isTypeOnly && regions.has("props")) {
-    return { action: "LIGHTWEIGHT", reason: "Prop interface changed — check rendered output" };
-  }
-  if (isTypeOnly) {
-    return { action: "LIGHTWEIGHT", reason: "Type definition changed — check rendered output" };
+  // ── Types / props only ─────────────────────────────────────────────────────
+
+  if (all.every((r) => ["props", "types", "imports", "exports"].includes(r))) {
+    if (regions.has("props")) return { action: "LIGHTWEIGHT", reason: "Prop interface changed — verify rendered output" };
+    return { action: "LIGHTWEIGHT", reason: "Type definition changed — verify rendered output" };
   }
 
-  // JSX markup changed but no handler/hook logic.
-  // Before returning the default "structure changed" reason, check if the diff
-  // contains visibility or layout-affecting properties — a single-line element
-  // like `<div style={{ display: "none" }}>` maps to jsx-markup (element wins),
-  // but the content still affects what Playwright can observe.
-  const isMarkupOnly = all.every((r) => r === "jsx-markup" || r === "jsx-styling" || r === "jsx-cosmetic" || r === "imports");
-  if (isMarkupOnly) {
+  // ── Styling prop forwarding (className/style added as pass-through prop) ───
+
+  if (
+    regions.has("function-body") &&
+    all.every((r) => ["function-body", "jsx-styling", "props", "types", "imports"].includes(r)) &&
+    isStylingPropForwarding(changedLines, ranges)
+  ) {
+    return {
+      action: "LIGHTWEIGHT",
+      reason: "Styling prop forwarded (className/style pass-through) — verify component still renders",
+    };
+  }
+
+  // ── JSX markup only (no logic, no events) ─────────────────────────────────
+
+  if (all.every((r) => ["jsx-markup", "jsx-styling", "jsx-cosmetic", "imports"].includes(r))) {
     const impact = analyzeStylingImpact(diff);
-    if (impact === "visibility") {
-      return {
-        action: "LIGHTWEIGHT",
-        reason: "JSX change affects element visibility — verify elements still render and are reachable",
-      };
-    }
-    if (impact === "layout") {
-      return {
-        action: "LIGHTWEIGHT",
-        reason: "JSX change affects layout or interaction (overflow/transform/position) — verify elements are reachable",
-      };
-    }
-    return { action: "LIGHTWEIGHT", reason: "JSX structure changed — verify elements render and are reachable" };
+    if (impact === "visibility") return { action: "LIGHTWEIGHT", reason: "JSX change affects visibility — verify elements still render" };
+    if (impact === "layout")     return { action: "LIGHTWEIGHT", reason: "JSX change affects layout — verify elements are reachable" };
+    return { action: "LIGHTWEIGHT", reason: "JSX structure changed — verify elements render correctly" };
   }
 
-  // Server action body changed — test the full form submission flow + auth
+  // ── Sub-region specifics (new in v2) ───────────────────────────────────────
+
+  // Event handlers only — pure interaction change, no render/state impact
+  if (all.every((r) => ["event-handler", "imports", "jsx-cosmetic"].includes(r))) {
+    return { action: "FULL_QA", reason: "Event handler logic changed — test user interactions and outcomes" };
+  }
+
+  // Async logic only — data fetching / async state, no structural change
+  if (all.every((r) => ["async-logic", "imports"].includes(r))) {
+    return { action: "FULL_QA", reason: "Async logic changed — test loading, error, and data states" };
+  }
+
+  // Conditional render only — what shows/hides changed, not how interactions work
+  if (all.every((r) => ["conditional-render", "jsx-markup", "jsx-styling", "imports"].includes(r))) {
+    return { action: "LIGHTWEIGHT", reason: "Conditional render changed — verify correct state is shown" };
+  }
+
+  // Event handler + conditional render mix (e.g. handler sets state that toggles render)
+  if (
+    regions.has("event-handler") &&
+    !regions.has("async-logic") &&
+    !regions.has("function-body") &&
+    !regions.has("server-action")
+  ) {
+    return { action: "FULL_QA", reason: "Event handler and render logic changed — test interactions and state" };
+  }
+
+  // ── Hook deps ──────────────────────────────────────────────────────────────
+
   if (regions.has("server-action")) {
-    return { action: "FULL_QA", reason: "Server action logic changed — test form submission, redirects, and auth" };
+    return { action: "FULL_QA", reason: "Server action changed — test form submission, redirects, and auth" };
   }
 
-  // Effect/memo/callback deps changed — re-run interaction + state tests
-  if (regions.has("hook-deps")) {
-    return { action: "FULL_QA", reason: "Hook dependency changed — re-run interaction and state browser tests" };
+  if (regions.has("hook-deps") && !regions.has("function-body")) {
+    return { action: "FULL_QA", reason: "Hook dependency changed — test side-effects and state transitions" };
   }
 
-  // General function body change — full browser regression
+  // ── General function body ─────────────────────────────────────────────────
+
   if (regions.has("function-body")) {
-    return { action: "FULL_QA", reason: "Component logic changed — run full browser regression" };
+    return { action: "FULL_QA", reason: "Component logic changed — test affected behaviour" };
   }
 
-  return { action: "FULL_QA", reason: "Mixed structural change — run full browser regression" };
+  return { action: "FULL_QA", reason: "Mixed structural change — run browser regression" };
 };
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-/**
- * Classify a single staged file — determines QA depth needed.
- *
- * Fast-path checks (deleted, assets, data, renames, new files) use simple
- * extension/status checks. For modified code files, parses the source AST
- * to determine exactly which structural regions were changed.
- */
 export const classifyFile = (file: StagedFile): ClassificationResult => {
   const ext = getExtension(file.path);
 
-  // Fast-path: non-code files and special statuses
   if (file.status === "D") return { action: "SKIP", reason: "File deleted — no browser behaviour to test" };
   if (TRIVIAL_EXTENSIONS.has(ext)) return { action: "SKIP", reason: `Asset file (${ext}) — no behaviour to test` };
   if (file.status === "R" && !file.diff.trim()) return { action: "SKIP", reason: "Pure rename — no content changed" };
   if (DATA_EXTENSIONS.has(ext)) return { action: "SKIP", reason: `Config/data file (${ext}) — no browser behaviour` };
   if (!CODE_EXTENSIONS.has(ext)) return { action: "SKIP", reason: `Non-JS/TS file (${ext}) — skipping` };
 
-  // New file — always full browser coverage
-  if (file.status === "A") return { action: "FULL_QA", reason: "New file — run full browser coverage" };
+  if (file.status === "A") {
+    const sourceText = existsSync(file.path) ? readFileSync(file.path, "utf8") : "";
+    return classifyNewFile(file.path, sourceText);
+  }
 
-  // Modified code file — AST-based classification
   const changedLines = extractChangedLineNumbers(file.diff);
   if (changedLines.size === 0) return { action: "SKIP", reason: "No content changed" };
 
   try {
-    const regionMap = buildLineRegionMap(file.path);
-    const regions = mapLinesToRegions(changedLines, regionMap);
-    const result = classifyByRegions(regions, file.diff);
+    const ranges  = buildLineRegionMap(file.path);
+    const regions = mapLinesToRegions(changedLines, ranges);
+    const result  = classifyByRegions(regions, file.diff, changedLines, ranges);
     return { ...result, changedRegions: [...regions] };
   } catch {
     return { action: "FULL_QA", reason: "Logic or component change detected" };
   }
 };
 
-/**
- * Classify all staged files and return only those requiring QA.
- */
 export const classifyStagedFiles = (
   files: StagedFile[],
-  skipTrivial = true
+  skipTrivial = true,
 ): ClassifiedFile[] =>
   files
     .map((file) => ({ file, classification: classifyFile(file) }))

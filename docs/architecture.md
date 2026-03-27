@@ -53,11 +53,10 @@ src/
 │   ├── index.ts              # Entry point (shebang + argv)
 │   ├── program.ts            # Commander subcommand registration
 │   └── commands/
-│       ├── init.ts            # Setup wizard (install, provider, Chromium, lenses, hook, skill)
+│       ├── init.ts            # Setup wizard (install, provider, Chromium, lenses, run mode, skill)
 │       ├── run.ts             # Core pipeline — preflight → classify → generate → GAN loop → report
-│       ├── watch.ts           # Background CI — watches .git/index, warm server + route map
+│       ├── watch.ts           # Stage-based CI — watches .git/index, warm server + route map
 │       ├── explain.ts         # AI explains last failure
-│       ├── hook.ts            # Install/remove pre-commit hook
 │       ├── lens.ts            # Interactive lens selection
 │       ├── models.ts          # Interactive provider + model selection
 │       ├── skill.ts           # Create skill file + print IDE prompt
@@ -82,7 +81,7 @@ src/
 │   └── index.ts               # Prompt builder + AI call → Playwright test code
 ├── git/
 │   ├── staged.ts              # Read staged files + diffs via simple-git
-│   └── hook.ts                # Pre-commit hook injection/removal (Husky-aware)
+│   └── hook.ts                # (internal) git hook utilities — not wired into CLI
 ├── preflight/
 │   └── index.ts               # Pre-run checks: model, API key, Ollama, Chromium
 ├── providers/
@@ -152,7 +151,7 @@ qagent-skill.md              ← project context injected into every prompt
 - **Route mapping via reverse import graph** — connects "component changed" → "pages to test". Built once, O(1) lookup.
 - **Parallel route slots** (`@header`, `@sidebar`) resolve to `/` — not independently navigable.
 - **Layout components** test against `/` only — avoids testing every page for a shared header change.
-- **Background CI** (watch mode) — Playwright tests take 3-10s, too slow for pre-commit blocking. Watch mode runs in background on git stage detection.
+- **Stage-based CI** (primary UX) — `qagent watch` polls `.git/index` for stage events and runs Playwright tests in the background. Developer keeps working; results surface in the terminal when ready. `qagent run` is the manual alternative — both operate purely on staged files, no commits involved.
 - **Preflight checks** — interactive prompts to install Chromium, configure model, set API key before first run.
 - **Failure feedback** — cross-run persistence means the AI retests previously-broken scenarios.
 - **Selector derivation** — prompt instructs AI to read aria-labels/text from source code, not guess. `boundingBox()` for CSS-transform visibility (framer-motion).

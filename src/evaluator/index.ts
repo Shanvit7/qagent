@@ -31,7 +31,18 @@ export const HARD_RULES = `## Hard rules — non-negotiable
 - Query hierarchy: \`getByRole\` → \`getByLabel\` → \`getByText\` → \`page.locator("tag")\`
 - For CSS-transform animations (framer-motion): use \`boundingBox()\` not \`toBeVisible()\`
 - \`waitForLoadState("domcontentloaded")\` after navigation — NOT "networkidle"
-- NO vi.mock(), NO jest.mock(), NO mocks, NO jsdom, NO @testing-library`;
+- NO vi.mock(), NO jest.mock(), NO mocks, NO jsdom, NO @testing-library
+- **Read the source for visibility signals before asserting hidden/visible state** —
+  check HOW the element is hidden: CSS class? attribute? transform? Use the right assertion for each.
+- **Responsive elements** — if the source has breakpoint classes (md:hidden, lg:flex etc.),
+  set the correct viewport BEFORE \`page.goto()\`. Read the source to know which breakpoint applies.
+- **Strict mode — NEVER let a locator match more than one element:**
+  Responsive layouts often have duplicate elements (two \`<header>\`, two nav menus, two logos — one desktop, one mobile).
+  If your locator could match multiple, scope it to the visible one:
+  \`page.locator("header").first()\`  — when there are two headers
+  \`page.locator("nav").filter({ hasText: /about/i })\`  — filter by content
+  \`page.getByRole("img", { name: /logo/i }).first()\`  — first matching image
+  Rule: if the JSX has a desktop AND mobile version of a component, always use \`.first()\` or a visibility filter`;
 
 // ─── Evaluator prompt ─────────────────────────────────────────────────────────
 
@@ -250,19 +261,51 @@ export const buildRefinementPrompt = (ctx: RefinementContext): string => {
     sections.push(`## ${ctx.failedTests.length} test(s) failing at runtime — fix these first`);
     for (const t of ctx.failedTests) {
       const msg = t.error?.slice(0, 600) ?? "unknown error";
-      sections.push(
-        `### ❌ "${t.name}"`,
-        "```",
-        msg,
-        "```",
-        "",
-        `**How to debug this failure:**`,
-        `1. If \`TimeoutError\` / \`waiting for\`: the selector doesn't match — re-read the source code above and use the exact aria-label, role, or text content you see`,
-        `2. If \`locator.click\` strict mode: multiple elements matched — make the selector more specific`,
-        `3. If \`Expected ... to be visible\` but element exists: it may be transformed off-screen (framer-motion) — use \`boundingBox()\` instead`,
-        `4. If the error is about the app (404, crash, unhandled exception): note it but don't fight it — adjust the assertion to what the app actually shows`,
-        "",
-      );
+      const isStrictMode   = msg.includes("strict mode violation") || msg.includes("resolved to");
+      const isTimeout      = msg.includes("TimeoutError") || msg.includes("waiting for");
+      const isTransform    = msg.includes("Expected") && msg.includes("to be visible") && !isStrictMode;
+
+      // Extract what the locator was, e.g. "locator('header') resolved to 2 elements"
+      const strictMatch = msg.match(/locator\(([^)]+)\)\s+resolved to (\d+) elements/);
+      const locatorStr  = strictMatch ? strictMatch[1] : null;
+      const countStr    = strictMatch ? strictMatch[2] : null;
+
+      sections.push(`### ❌ "${t.name}"`, "```", msg, "```", "");
+
+      if (isStrictMode) {
+        sections.push(
+          `**Fix — strict mode violation${locatorStr ? ` on ${locatorStr}` : ""}:**`,
+          `Your selector matched ${countStr ?? "multiple"} elements. Responsive layouts duplicate elements (desktop + mobile hidden via CSS).`,
+          `Choose the fix that matches what you see in the source code above:`,
+          `- Scope to first visible: \`page.locator("header").first()\``,
+          `- Filter by content: \`page.locator("nav").filter({ hasText: /specific text/i })\``,
+          `- Use a unique parent: \`page.locator("#desktop-nav a", { hasText: /about/i })\``,
+          `- For images: \`page.getByRole("img", { name: /logo/i }).first()\``,
+          `Re-read the JSX above — find an attribute or wrapper that exists on only ONE of the duplicates and use that.`,
+          "",
+        );
+      } else if (isTimeout) {
+        sections.push(
+          `**Fix — selector not found or element not visible:**`,
+          `1. Re-read the source code above and find the exact aria-label, role, or text content`,
+          `2. Check the route — does \`${ctx.route}\` actually render this component?`,
+          `3. If the element appears after interaction, add a \`waitFor\` before the assertion`,
+          "",
+        );
+      } else if (isTransform) {
+        sections.push(
+          `**Fix — element may be off-screen (CSS transform / framer-motion):**`,
+          `Replace \`toBeVisible()\` with \`boundingBox()\` to check position instead of visibility`,
+          "",
+        );
+      } else {
+        sections.push(
+          `**Fix:**`,
+          `1. If the error is a selector mismatch — re-read the source code and use exact text/role/label`,
+          `2. If it's an app error (404, crash) — adjust the assertion to match what the app actually shows`,
+          "",
+        );
+      }
     }
   }
 

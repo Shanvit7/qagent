@@ -105,7 +105,7 @@ Each file owns exactly one concern. If a file grows past ~300 lines or has two u
 | `generator/index.ts` | Prompt building and AI client calls      |
 | `runner/index.ts` | Vitest subprocess management               |
 | `git/staged.ts` | Reading git staged files and diffs           |
-| `git/hook.ts`  | Git hook injection and removal                |
+| `git/staged.ts` | Reading git staged files and diffs (primary) |
 | `cli/commands/*.ts` | One file per CLI command                  |
 
 ---
@@ -231,13 +231,14 @@ Never type catch variables as `any`. Use `instanceof Error` narrowing.
 }
 ```
 
-### 4.3 Infra Errors Must Not Block Commits
+### 4.3 Infra Errors Must Exit Cleanly
 
-If qagent fails for any reason that isn't a test failure (Ollama down, file read error, parse failure), the commit must be **allowed through**. Only a genuine test failure justifies blocking.
+If qagent fails for any reason that isn't a test failure (Ollama down, file read error, parse failure), exit with a clear warning message. Watch mode continues; manual `qagent run` exits 1 only on genuine test failure.
 
 ```ts
-// ✅ — infra failure exits 0 in hook mode
-process.exit(isHook ? 0 : 1);
+// ✅ — infra failure: warn and exit
+p.log.warn("Preflight failed — skipping tests.");
+process.exit(0);
 ```
 
 ---
@@ -315,7 +316,7 @@ All user-facing terminal output uses **chalk** for color and **ora** for spinner
 |---------------------|--------------------------------------------|
 | `chalk.bold.cyan`   | Section headers, command names              |
 | `chalk.green`       | Success messages                            |
-| `chalk.red`         | Failures, blocked commits                   |
+| `chalk.red`         | Failures, errors                            |
 | `chalk.yellow`      | Warnings, skipped items                     |
 | `chalk.dim`         | Secondary info, hints, raw output           |
 | `ora(…).start()`    | Any operation that takes >100ms             |
@@ -333,7 +334,7 @@ All user-facing terminal output uses **chalk** for color and **ora** for spinner
 - Prompts live in `generator/index.ts` — the `buildPrompt` function. Keep them clean, specific, and testable.
 - Temperature for test generation: **0.2** (deterministic). Temperature for explanations: **0.3**.
 - Always extract the code block from AI output with `extractCodeBlock` before writing tests to disk.
-- If AI is unavailable: warn, skip, and **never block the commit**.
+- If AI is unavailable: warn and skip — tests on staged files are best-effort.
 
 ---
 
@@ -376,7 +377,7 @@ The following are hard bans. Do not do them under any circumstance:
 | `any` type annotations               | Defeats TypeScript's purpose                     |
 | Barrel `index.ts` re-export files    | Creates hidden coupling                          |
 | Empty `catch {}` without a comment   | Hides bugs silently                              |
-| `process.exit(1)` on AI failures     | Never block commits due to tooling issues        |
+| `process.exit(1)` on AI failures     | Warn and skip — tooling issues shouldn't stop the dev |
 | Hardcoding model names in logic      | Always read from config                          |
 | `.then()` chains                     | Use `async/await` instead                        |
 | `import` without `.js` extension     | Breaks ESM resolution                            |

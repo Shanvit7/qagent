@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { homedir } from "node:os";
-import type { QAgentConfig, QaLens } from "./types";
+import type { QAgentConfig } from "./types";
 import type { ProviderName } from "@/providers/index";
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
@@ -13,7 +13,6 @@ const RC_FILE       = `${homedir()}/.qagentrc`;
 // ─── Persisted config shape (.qagent/config.json) ────────────────────────────
 
 interface PersistedConfig {
-  lenses?: QaLens[];
   skipTrivial?: boolean;
   timeout?: number;
   evaluator?: {
@@ -34,10 +33,6 @@ interface PersistedConfig {
     headless?: boolean;
   };
 }
-
-const VALID_LENSES = new Set<QaLens>([
-  "render", "interaction", "state", "edge-cases", "security",
-]);
 
 // ─── ~/.qagentrc  (provider=<name> + model=<name>) ──────────────────────────
 
@@ -135,10 +130,6 @@ export const writePersistedConfig = (cwd: string, config: PersistedConfig): void
 
 // ─── Defaults ─────────────────────────────────────────────────────────────────
 
-export const DEFAULT_LENSES: QaLens[] = [
-  "render", "interaction", "state", "edge-cases", "security",
-];
-
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export const loadConfig = (cwd: string = process.cwd()): QAgentConfig => {
@@ -154,8 +145,6 @@ export const loadConfig = (cwd: string = process.cwd()): QAgentConfig => {
   const persisted = readPersistedConfig(cwd);
   const skillPath = resolve(cwd, SKILL_FILE);
 
-  const lenses = (persisted.lenses ?? DEFAULT_LENSES).filter((l) => VALID_LENSES.has(l));
-
   let skillContext: string | undefined;
   if (existsSync(skillPath)) {
     try {
@@ -167,7 +156,6 @@ export const loadConfig = (cwd: string = process.cwd()): QAgentConfig => {
   return {
     ai: { provider, model },
     playwright: {
-      lenses: lenses.length > 0 ? lenses : DEFAULT_LENSES,
       timeout: persisted.timeout ?? 15_000,
       server: {
         autoDetect: true,

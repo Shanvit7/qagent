@@ -2,12 +2,9 @@ import * as p from "@clack/prompts";
 import color from "picocolors";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { injectGitHook, detectHuskyDir } from "@/git/hook";
 import { detectPackageManager, runPm } from "@/utils/packageManager";
 import { setupProvider } from "@/setup/providers";
 import { ensureQAgentIgnored } from "@/reporter/index";
-import { writePersistedConfig, DEFAULT_LENSES } from "@/config/loader";
-import type { QaLens } from "@/config/types";
 import { SKILL_TEMPLATE } from "@/skill/template";
 import { detectPlaywrightBrowsers, ensurePlaywrightBrowsers } from "@/runner/index";
 
@@ -20,7 +17,7 @@ ${color.cyan("  ██║   ██║███████║██║  ██�
 ${color.cyan("  ██║▄▄ ██║██╔══██║██║   ██║██╔══╝  ██║╚██╗██║   ██║   ")}
 ${color.cyan("  ╚██████╔╝██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║   ")}
 ${color.cyan("   ╚══▀▀═╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝   ")}
-${color.dim("  AI-powered QA on every commit                    v0.1.0")}
+${color.dim("  Local CI that tests your app in a real browser                v0.1.0")}
 `;
 
 const isAlreadyInstalled = (cwd: string): boolean => {
@@ -123,77 +120,7 @@ export const initCommand = async (): Promise<void> => {
   // -- Step 4: gitignore --
   ensureQAgentIgnored(cwd);
 
-  // -- Step 5: run mode --
-  const huskyDir = detectHuskyDir(cwd);
-  const hookScope = huskyDir !== null
-    ? "team-wide via Husky"
-    : "local only via git hooks";
-
-  const runMode = await p.select({
-    message: "How should qagent run?",
-    options: [
-      {
-        value: "hook" as const,
-        label: "On every commit",
-        hint: `recommended — pre-commit hook, ${hookScope}`,
-      },
-      {
-        value: "manual" as const,
-        label: "On demand",
-        hint: "run `qagent run` manually, no commit gating",
-      },
-    ],
-  });
-
-  if (p.isCancel(runMode)) {
-    p.cancel("Cancelled.");
-    return;
-  }
-
-  const useHook = runMode === "hook";
-
-  if (useHook) {
-    const s = p.spinner();
-    s.start("Installing pre-commit hook");
-    try {
-      const { hookPath, target } = injectGitHook(cwd, pm.runner);
-      s.stop(`Pre-commit hook installed via ${target === "husky" ? "Husky" : "git"} → ${hookPath}`);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      s.stop(color.red(`Could not install hook: ${message}`));
-      p.log.warn("Run `npx qagent init` inside your git repo to retry.");
-    }
-  } else {
-    p.log.info("Skipped hook — run " + color.cyan("qagent run") + " anytime to check staged changes.");
-  }
-
-  // -- Step 6: lens selection --
-  const selectedLenses = await p.multiselect({
-    message: "Which QA lenses should run on every commit?",
-    options: [
-      { value: "render" as QaLens,      label: "render",      hint: "mounts without crash, null/missing props" },
-      { value: "interaction" as QaLens,  label: "interaction", hint: "clicks, inputs, keyboard events, form submission" },
-      { value: "state" as QaLens,        label: "state",       hint: "loading, empty, error, populated data" },
-      { value: "edge-cases" as QaLens,   label: "edge-cases",  hint: "boundary values, race conditions, optional data" },
-      { value: "security" as QaLens,     label: "security",    hint: "auth enforcement, input validation, data exposure" },
-    ],
-    initialValues: DEFAULT_LENSES as QaLens[],
-    required: false,
-  } as Parameters<typeof p.multiselect>[0]);
-
-  if (p.isCancel(selectedLenses)) {
-    p.cancel("Cancelled.");
-    return;
-  }
-
-  const lenses = (selectedLenses as QaLens[]).length > 0
-    ? selectedLenses as QaLens[]
-    : DEFAULT_LENSES;
-
-  writePersistedConfig(cwd, { lenses });
-  p.log.step(`Lenses: ${lenses.join(", ")}`);
-
-  // -- Step 7: skill file --
+  // -- Step 5: skill file --
   const skillPath = resolve(cwd, SKILL_FILE);
 
   if (existsSync(skillPath)) {
@@ -207,9 +134,9 @@ export const initCommand = async (): Promise<void> => {
   }
 
   // -- Done --
-  const nextSteps = useHook
-    ? "Every commit will now trigger AI-powered QA automatically."
-    : "Run " + color.cyan("qagent run") + " on staged changes whenever you want a report.";
+  const nextSteps =
+    "Stage files and run " + color.cyan("qagent watch") + " for auto QA, or " +
+    color.cyan("qagent run") + " on demand.";
 
   p.note(
     [
@@ -217,7 +144,6 @@ export const initCommand = async (): Promise<void> => {
       "",
       `${color.cyan("qagent models")}  — switch AI provider or model`,
       `${color.cyan("qagent skill")}   — fill in your project skill file`,
-      `${color.cyan("qagent lens")}    — choose which QA lenses run`,
       `${color.cyan("qagent status")}  — check your setup`,
     ].join("\n"),
     "qagent is ready!",

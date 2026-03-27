@@ -14,17 +14,17 @@ export const hookCommand = async (): Promise<void> => {
     : "local only via git hooks";
 
   const choice = await p.select({
-    message: "Pre-commit hook mode:",
+    message: "Optional pre-commit gate:",
     options: [
       {
         value: "enable" as const,
         label: "Enable",
-        hint: `run QA automatically before every commit — ${scopeNote}`,
+        hint: `hard gate — blocks commit until QA passes — ${scopeNote}`,
       },
       {
         value: "disable" as const,
         label: "Disable",
-        hint: "remove the hook, run `qagent run` manually instead",
+        hint: "remove gate — use `qagent watch` for stage-based background CI instead",
       },
     ],
   });

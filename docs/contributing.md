@@ -112,7 +112,7 @@ src/
 ├── config/          # Config loading and types
 ├── context/         # Per-file import graph analysis
 ├── generator/       # Prompt construction + AI provider calls
-├── git/             # Staged files + hook management
+├── git/             # Staged files reader
 ├── providers/       # Unified AI abstraction (Ollama, OpenAI, Anthropic)
 ├── reporter/        # Terminal output + report files
 ├── runner/          # Vitest subprocess management
@@ -199,7 +199,7 @@ All agents follow the same architecture. Here's the pattern:
 Key constraints:
 - Set hard limits (max tool calls, timeout)
 - Cap tool output (`MAX_OUTPUT = 3_000–3_500`)
-- Fall back silently — agents never block commits
+- Fall back silently — agents warn and skip on infra failures
 - Use `temperature: 0.1–0.2` for deterministic output
 
 ---

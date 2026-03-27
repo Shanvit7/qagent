@@ -20,13 +20,13 @@ import { detectPlaywrightBrowsers, ensurePlaywrightBrowsers } from "@/runner/ind
 
 export interface PreflightResult {
   ok: boolean;
-  /** Short reason if not ok — for hook mode where we skip interactive prompts */
+  /** Short reason if not ok */
   reason?: string;
 }
 
 /**
  * Run all preflight checks. In interactive mode, prompts the user to fix issues.
- * In hook mode (non-interactive), just reports pass/fail.
+ * In non-interactive mode (e.g. watch), just reports pass/fail.
  */
 export const runPreflight = async (
   cwd: string,

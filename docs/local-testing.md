@@ -280,47 +280,35 @@ bunx vitest run --coverage
 
 ---
 
-## Testing the Pre-Commit Hook
+## Testing Stage-Based Triggering
 
-To test hook mode end-to-end:
+qagent runs on staged files — either automatically (watch mode) or manually.
 
-### In a Linked React/Next.js Project
+### Auto mode — `qagent watch`
 
 ```bash
 cd /path/to/your-react-or-nextjs-project
 
-# Install the hook
-qagent hook               # interactive — choose "install"
+# Start the watcher in a separate terminal
+qagent watch
 
-# Or during init
-qagent                    # choose "On every commit" mode
-
-# Make a change and commit
+# In your normal terminal, stage a file
 echo "// test" >> src/App.tsx
 git add src/App.tsx
-git commit -m "test qagent hook"
-# → qagent runs automatically before the commit
+# → qagent detects the stage event and runs QA in the background
+# → results appear in the watch terminal when ready
 ```
 
-### What the Hook Does
-
-The hook script runs `<runner> qagent run --hook`. The `--hook` flag tells qagent:
-- Exit 0 on infrastructure errors (never block commits due to tooling issues)
-- Exit 1 only on genuine test failures
-
-### Testing Hook Installation
+### Manual mode — `qagent run`
 
 ```bash
-# Check what was written
-cat .git/hooks/pre-commit    # raw git hook
-# or
-cat .husky/pre-commit        # husky hook
-
-# The script should contain:
-# # qagent-hook
-# npx qagent run --hook
-# exit $?
+echo "// test" >> src/App.tsx
+git add src/App.tsx
+qagent run
+# → runs QA on currently staged files, exits when done
 ```
+
+Both modes operate purely on staged files. No commits are involved.
 
 ---
 
@@ -357,7 +345,6 @@ If you need to test the non-AI parts of qagent (classifier, analyzer, scanner, e
    ```bash
    qagent run
    # → AI unavailable — skipping (connection refused)
-   # → commit is allowed through (not blocked)
    ```
 
 The classifier, analyzer, scanner, and context modules all work without Ollama. Only `generator/`, `agent/`, and `explain` require a running Ollama instance.
@@ -379,17 +366,6 @@ npm config get prefix     # shows npm's global prefix
 
 With `npm link`, the symlink points to your local `dist/` directory. Make sure you ran `bun run build` after making changes. Use `bun run build:watch` for automatic rebuilds.
 
-### Permission Errors on Hook
-
-The hook file needs to be executable:
-
-```bash
-chmod +x .git/hooks/pre-commit
-# or
-chmod +x .husky/pre-commit
-```
-
-qagent sets this automatically during `qagent hook`, but manual edits may reset it.
 
 ### Ollama Connection Issues
 

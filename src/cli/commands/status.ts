@@ -1,7 +1,7 @@
 import * as p from "@clack/prompts";
 import color from "picocolors";
-import { existsSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { readProvider, readModel, readIterations, DEFAULT_ITERATIONS } from "@/config/loader";
 import { isOllamaRunning, listOllamaModels, hasApiKey, envVarName } from "@/providers/index";
 import type { ProviderName } from "@/providers/index";
@@ -15,23 +15,6 @@ interface CheckItem {
   fix?: string;
 }
 
-const checkHook = (cwd: string): CheckItem => {
-  const MARKER = "# qagent-hook";
-  const huskyHook = join(cwd, ".husky", "pre-commit");
-  const gitHook   = join(cwd, ".git", "hooks", "pre-commit");
-
-  if (existsSync(huskyHook) && readFileSync(huskyHook, "utf8").includes(MARKER))
-    return { label: "Pre-commit hook active", status: "pass", detail: "via Husky (.husky/pre-commit)" };
-  if (existsSync(gitHook) && readFileSync(gitHook, "utf8").includes(MARKER))
-    return { label: "Pre-commit hook active", status: "pass", detail: "via git (.git/hooks/pre-commit)" };
-
-  return {
-    label: "Pre-commit hook not installed",
-    status: "warn",
-    detail: "QA won't run automatically on commit",
-    fix: "npx qagent init",
-  };
-};
 
 const checkSkillFile = (cwd: string): CheckItem => {
   if (existsSync(resolve(cwd, "qagent-skill.md")))
@@ -123,7 +106,6 @@ export const statusCommand = async (): Promise<void> => {
 
   const checks: CheckItem[] = [
     checkSkillFile(cwd),
-    checkHook(cwd),
     await checkModel(provider, model),
   ];
 

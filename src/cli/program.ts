@@ -6,8 +6,6 @@ import { watchCommand } from "./commands/watch";
 import { explainCommand } from "./commands/explain";
 import { statusCommand } from "./commands/status";
 import { modelsCommand } from "./commands/models";
-import { lensCommand } from "./commands/lens";
-import { hookCommand } from "./commands/hook";
 import { skillCommand } from "./commands/skill";
 import { configCommand } from "./commands/config";
 
@@ -23,13 +21,12 @@ program
 
 program
   .command("init")
-  .description("Setup wizard — install qagent, inject git hook, create config")
+  .description("Setup wizard — install qagent, configure AI, create config")
   .action(initCommand);
 
 program
   .command("run")
   .description("Run QA on staged files (starts dev server per-run)")
-  .option("--hook", "Running from git pre-commit hook")
   .option("--iterations <n>", "Max refinement iterations for this run (min 3, max 8)")
   .action(runCommand);
 
@@ -53,15 +50,7 @@ program
   .description("Switch the AI model used for test generation")
   .action(modelsCommand);
 
-program
-  .command("lens")
-  .description("Select which QA lenses run on every commit")
-  .action(lensCommand);
 
-program
-  .command("hook")
-  .description("Enable or disable the pre-commit hook")
-  .action(hookCommand);
 
 program
   .command("skill")

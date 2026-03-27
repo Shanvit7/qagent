@@ -14,7 +14,7 @@ import { classifyStagedFiles, type ClassifiedFile } from "@/classifier/index";
 import { analyzeFile } from "@/analyzer/index";
 import { generateTests, refineTests, type GenerateTestsOptions } from "@/generator/index";
 import { runPlaywrightTest, type StructuredTestResult } from "@/runner/index";
-import { evaluateTests, buildRefinementPrompt } from "@/evaluator/index";
+import { evaluateTests, buildRefinementPrompt, HARD_RULES } from "@/evaluator/index";
 import type { EvaluationResult } from "@/evaluator/index";
 import { loadConfig } from "@/config/loader";
 import { runPreflight } from "@/preflight/index";
@@ -99,7 +99,7 @@ const processFile = async (
 
     const beforeGen = getSessionUsage();
     const generated = await generateTests(
-      analysis, config, config.playwright.lenses, routes, cwd,
+      analysis, config, routes, cwd,
       scanContext, router, fileContext, genOptions,
     );
     testCode = generated.testCode;
@@ -121,6 +121,51 @@ const processFile = async (
   const maxIter = evalConfig.enabled ? evalConfig.maxIterations : 1;
 
   for (let iter = 1; iter <= maxIter; iter++) {
+    // Pre-validate: if the generated code has no test() blocks, skip the
+    // Playwright spawn entirely — a compile error or wrong structure will just
+    // waste time and return 0 results anyway. Go straight to refinement.
+    const testCallCount = (testCode.match(/\btest\s*\(/g) ?? []).length;
+    if (testCallCount === 0) {
+      p.log.warn(color.yellow(`  Iteration ${iter}: generated code has no test() blocks — skipping run, going straight to refinement`));
+
+      if (iter === maxIter) {
+        p.log.message(color.dim("  Max iterations reached with no runnable tests — skipping file"));
+        break;
+      }
+
+      const beforeRefineNoTest = getSessionUsage();
+      const noTestPrompt = [
+        `Your previous output for \`${analysis.filePath}\` contained ZERO test() blocks.`,
+        `Playwright found nothing to run.`,
+        ``,
+        `This usually happens when you:`,
+        `- Wrap tests inside a plain function instead of test()`,
+        `- Output only comments or type definitions`,
+        `- Use describe() without any test() inside`,
+        ``,
+        `You MUST output a \`\`\`ts code block containing at least 2 actual test() calls.`,
+        ``,
+        `## Source code`,
+        "```tsx",
+        analysis.sourceText,
+        "```",
+        ``,
+        `## Route: \`${routes[0] ?? "/"}\``,
+        ``,
+        HARD_RULES,
+      ].join("\n");
+
+      try {
+        testCode = await refineTests(testCode, noTestPrompt, config.ai);
+        const refineTokens = formatTokenDelta(beforeRefineNoTest, getSessionUsage());
+        p.log.message(color.dim(`  Regenerated${refineTokens ? `  ${refineTokens}` : ""}`));
+      } catch {
+        p.log.message(color.dim("  Regeneration failed — skipping file"));
+        break;
+      }
+      continue;
+    }
+
     const runSpinner = p.spinner();
     runSpinner.start(`Running tests (iteration ${iter}/${maxIter})`);
 
@@ -320,23 +365,17 @@ const buildFailureText = (
 // -- Main command --
 
 interface RunOptions {
-  hook?: boolean | undefined;
   iterations?: string | undefined;
 }
 
 export const runCommand = async (options: RunOptions = {}): Promise<void> => {
-  const isHook = options.hook === true;
-  const cwd    = process.cwd();
+  const cwd = process.cwd();
 
   p.intro(color.cyan("qagent"));
 
   // -- Preflight: model, API key, Playwright --
-  const preflight = await runPreflight(cwd, { interactive: !isHook });
+  const preflight = await runPreflight(cwd, { interactive: true });
   if (!preflight.ok) {
-    if (isHook) {
-      p.log.warn(preflight.reason ?? "Preflight failed — skipping tests.");
-      process.exit(0); // Don't block the commit
-    }
     p.outro(color.dim("Fix the above, then re-run."));
     process.exit(1);
     return;
@@ -372,7 +411,7 @@ export const runCommand = async (options: RunOptions = {}): Promise<void> => {
   } catch (err) {
     s.stop(color.red("Could not read staged files"));
     p.log.error(err instanceof Error ? err.message : String(err));
-    process.exit(isHook ? 0 : 1);
+    process.exit(1);
     return;
   }
 
@@ -392,7 +431,7 @@ export const runCommand = async (options: RunOptions = {}): Promise<void> => {
   }
 
   if (toTest.length === 0) {
-    p.log.success("No QA-worthy changes — commit allowed.");
+    p.log.success("No QA-worthy changes — nothing to test.");
     p.outro("");
     process.exit(0);
     return;
@@ -418,7 +457,7 @@ export const runCommand = async (options: RunOptions = {}): Promise<void> => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     serverSpinner.stop(color.red(`Server failed: ${msg}`));
-    process.exit(isHook ? 0 : 1);
+    process.exit(1);
     return;
   }
 

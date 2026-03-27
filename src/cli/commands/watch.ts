@@ -97,7 +97,7 @@ const runCycle = async (cwd: string): Promise<void> => {
       let testCode: string;
       try {
         const generated = await generateTests(
-          analysis, config, config.playwright.lenses, routes, cwd,
+          analysis, config, routes, cwd,
           scanContext, router, fileContext, genOptions,
         );
         testCode = generated.testCode;

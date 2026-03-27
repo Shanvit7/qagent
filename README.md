@@ -7,11 +7,11 @@ qagent watches your staged changes, generates Playwright tests with AI, and runs
 ## Quick Start
 
 ```bash
-npx qagent@latest        # setup wizard — picks AI model, installs Chromium, configures hook
+npx qagent@latest        # setup wizard — picks AI model, installs Chromium, choose run mode
 qagent watch             # start background CI (primary UX)
 ```
 
-The setup wizard walks you through everything: AI provider, model selection, Chromium browser install, QA lenses, and pre-commit hook.
+The setup wizard walks you through everything: AI provider, model selection, Chromium browser install, QA lenses, and run mode (auto on stage or manual).
 
 ## How It Works
 
@@ -68,7 +68,6 @@ The loop has dual feedback — **runtime** (did the test actually pass in a real
 | `qagent explain` | AI explains the last failure in plain English |
 | `qagent models` | Switch AI model (Ollama / OpenAI / Anthropic) |
 | `qagent lens` | Configure which QA lenses run |
-| `qagent hook` | Enable/disable pre-commit hook |
 | `qagent skill` | Create `qagent-skill.md` with project context |
 | `qagent status` | Show config and provider status |
 
@@ -127,7 +126,7 @@ Not every file change needs AI-generated tests. The classifier examines the actu
 | Prop/type changes | **LIGHTWEIGHT** | Minimal |
 | Function logic, hooks | **FULL_QA** | Full loop |
 
-On a typical 8-file commit, 2-3 files get FULL_QA. That's 60-70% cost savings.
+On a typical 8-file stage, 2-3 files get FULL_QA. That's 60-70% cost savings.
 
 ## Route Mapping
 
@@ -165,12 +164,12 @@ src/
 ├── scanner/        # Project structure detection (router type, hooks)
 ├── agent/          # Security analysis agent (tool-calling: grep + read_file)
 ├── feedback/       # Cross-run failure memory (auto-clears on pass)
-├── git/            # Staged file reader, pre-commit hook management
+├── git/            # Staged file reader
 ├── providers/      # Unified AI abstraction (Ollama, OpenAI, Anthropic)
 ├── config/         # Config types, loader (~/.qagentrc + .qagent/config.json)
 ├── skill/          # Playwright-oriented skill file template + IDE prompt
 ├── cli/commands/
-│   ├── init.ts     # Setup wizard (provider, Chromium, lenses, hook, skill)
+│   ├── init.ts     # Setup wizard (provider, Chromium, lenses, run mode, skill)
 │   ├── watch.ts    # Background CI (primary UX)
 │   ├── run.ts      # One-shot QA with preflight + GAN loop
 │   ├── explain.ts  # AI failure explanation

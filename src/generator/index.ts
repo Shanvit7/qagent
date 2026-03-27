@@ -4,7 +4,11 @@
  */
 
 import type { FileAnalysis, ComponentType } from "@/analyzer/index";
-import type { QaLens, AiConfig, QAgentConfig } from "@/config/types";
+import type { AiConfig, QAgentConfig } from "@/config/types";
+
+// All lenses — always available internally, filtered by region at generation time
+type QaLens = "render" | "interaction" | "state" | "edge-cases" | "security";
+const ALL_LENSES: QaLens[] = ["render", "interaction", "state", "edge-cases", "security"];
 import type { FileContext } from "@/context/index";
 import { runSecurityAnalysis } from "@/agent/security";
 import { generate } from "@/providers/index";
@@ -13,7 +17,6 @@ import { HARD_RULES } from "@/evaluator/index";
 export interface GeneratedTests {
   filePath: string;
   testCode: string;
-  lenses: QaLens[];
   routes: string[];
 }
 
@@ -169,7 +172,7 @@ const extractCodeBlock = (raw: string): string => {
 
 const buildSecurityBlock = (
   analysis: FileAnalysis,
-  lenses: QaLens[],
+  lenses: readonly QaLens[],
   agentContext?: string | undefined,
 ): string => {
   if (!lenses.includes("security")) return "";
@@ -185,6 +188,99 @@ const buildDiffBlock = (diff: string | undefined, fileStatus: string | undefined
 \`\`\`diff
 ${diff.slice(0, 2_000)}
 \`\`\``;
+};
+
+import type { ChangeRegion } from "@/classifier/index";
+
+// ─── Selector rules (shared between generate + refine prompts) ────────────────
+
+const SELECTOR_RULES = `## Selector rules
+
+**Rule 1 — Read from source, never invent**
+Every \`getByRole()\`, \`getByText()\`, \`getByLabel()\` must match the EXACT aria-label, link text, or heading in the JSX above.
+
+**Rule 2 — Query hierarchy**
+1. \`page.getByRole("button", { name: /exact label from source/i })\`
+2. \`page.getByLabel(/label text/i)\`
+3. \`page.getByText(/visible text/i)\`
+4. \`page.locator("semantic-tag")\` — only when no role/label exists
+
+**Rule 3 — HTML roles**
+- \`<header>\` → role "banner" only when direct child of \`<body>\`. Otherwise \`page.locator("header").first()\`
+- \`<nav aria-label="X">\` → \`page.getByRole("navigation", { name: "X" })\`
+
+**Rule 4 — CSS transforms are NOT visibility**
+\`transform: translateY(-100%)\` does NOT affect \`toBeVisible()\`.
+For elements moved off-screen by CSS/animation, check position with \`boundingBox()\`:
+\`expect((await page.locator("header").boundingBox())?.y).toBeLessThan(0)\`
+
+**Rule 5 — Read the source for visibility signals**
+Before asserting hidden/visible state on any element, read how the source ACTUALLY hides it:
+- Is it \`display:none\`? → \`toBeHidden()\` works
+- Is it a CSS class toggle (\`hidden\`, \`invisible\`)? → check the class or use \`boundingBox()\`
+- Is it an attribute like \`aria-hidden\` or \`inert\`? → \`toHaveAttribute("aria-hidden", "true")\`
+- Is it a CSS transform? → \`boundingBox()\`
+Do not assume \`toBeVisible()\` / \`toBeHidden()\` work — check the source first.
+
+**Rule 6 — Viewport before navigation**
+If the element you're testing is only visible at a specific breakpoint (e.g. a mobile menu, a sidebar),
+set the viewport BEFORE \`page.goto()\`:
+\`await page.setViewportSize({ width: 390, height: 844 }); // mobile\`
+Read the source for responsive classes (\`md:hidden\`, \`lg:flex\`, etc.) to know which viewport to use.`;
+
+// Maps classifier regions to plain-English test focus hints.
+const REGION_FOCUS: Partial<Record<ChangeRegion, string>> = {
+  "function-body":  "Focus on the component's primary behavior and user interactions",
+  "hook-deps":      "Focus on state transitions, async updates, and side-effect outcomes",
+  "server-action":  "Focus on form submission, success/error states, and redirects",
+  "jsx-markup":     "Focus on element presence, text content, and structure",
+  "jsx-styling":    "Focus on visibility — confirm elements still render and are reachable",
+  "jsx-cosmetic":   "One smoke test — confirm the page loads and key elements are visible",
+  "props":          "Focus on how the new/changed prop affects rendered output",
+  "types":          "One smoke test — type change shouldn't affect browser behavior",
+  "imports":        "One smoke test — verify the page still loads after the import change",
+  "exports":        "One smoke test — verify the component still renders correctly",
+};
+
+// Which lenses are relevant for each changed region.
+// A className-only change doesn't need interaction/state/edge-cases tests.
+const REGION_LENS_MAP: Partial<Record<ChangeRegion, QaLens[]>> = {
+  "imports":            ["render"],
+  "exports":            ["render"],
+  "types":              ["render"],
+  "props":              ["render", "state"],
+  "jsx-styling":        ["render"],
+  "jsx-cosmetic":       ["render"],
+  "jsx-markup":         ["render", "interaction"],
+  "conditional-render": ["render", "state"],
+  "event-handler":      ["interaction", "edge-cases"],
+  "async-logic":        ["state", "edge-cases"],
+  "function-body":      ["render", "interaction", "state", "edge-cases"],
+  "hook-deps":          ["state", "interaction", "edge-cases"],
+  "server-action":      ["interaction", "state", "security"],
+};
+
+const filterLensesToRegions = (lenses: QaLens[], regions: ChangeRegion[]): QaLens[] => {
+  const allowed = new Set<QaLens>();
+  for (const region of regions) {
+    for (const lens of REGION_LENS_MAP[region] ?? lenses) {
+      allowed.add(lens);
+    }
+  }
+  // Keep only lenses the user has enabled
+  return lenses.filter((l) => allowed.has(l));
+};
+
+const buildRegionScopeHint = (regions: ChangeRegion[]): string => {
+  // Pick the highest-signal region (first match in priority order)
+  const priority: ChangeRegion[] = [
+    "server-action", "hook-deps", "function-body",
+    "jsx-markup", "props", "jsx-styling", "jsx-cosmetic",
+    "types", "exports", "imports",
+  ];
+  const dominant = priority.find((r) => regions.includes(r));
+  const hint = dominant ? REGION_FOCUS[dominant] : null;
+  return hint ? `Focus hint: ${hint}.` : "";
 };
 
 const buildChangeContextBlock = (
@@ -212,16 +308,21 @@ Write 1-3 targeted tests. Focus only on what the classifier flagged:
 - Skip lenses that don't apply to this change type`;
   }
 
+  // Derive a focused instruction from the changed regions so the AI doesn't
+  // test the whole component when only a slice of it changed.
+  const regionScope = changedRegions?.length
+    ? buildRegionScopeHint(changedRegions as ChangeRegion[])
+    : null;
+
   return `## Scope: FULL QA — ${reason}${regionLine}
-Write 4-8 focused tests covering the changed behavior. Cover all enabled lenses that apply.
-Prioritise tests for the CHANGED regions — don't write tests for unrelated behavior.`;
+Write 3-5 focused tests. **Test ONLY the changed behavior — not the whole component.**
+${regionScope ? regionScope + "\n" : ""}Cover each enabled lens that applies to the changed region. Skip lenses for code that did NOT change.`;
 };
 
 // ─── Prompt builder ───────────────────────────────────────────────────────────
 
 interface PromptInput {
   analysis: FileAnalysis;
-  lenses: QaLens[];
   routes: string[];
   router: "app" | "pages" | "none";
   skillContext?: string | undefined;
@@ -237,112 +338,110 @@ interface PromptInput {
 
 const buildPrompt = (input: PromptInput): string => {
   const { analysis, router } = input;
+  const isNewFile = input.fileStatus === "A";
+  const hasDiff   = !!input.diff?.trim() && !isNewFile;
 
-  const activeLenses = analysis.componentType === "server-action"
-    ? [...new Set([...input.lenses, "security" as QaLens])]
-    : input.lenses;
+  // Server actions always get security lens
+  const activeLenses: QaLens[] = analysis.componentType === "server-action"
+    ? [...new Set([...ALL_LENSES, "security" as QaLens])]
+    : ALL_LENSES;
 
-  const lensBlock = activeLenses
+  // For modified files filter to only lenses relevant to what changed.
+  // New files and unknown regions get all lenses.
+  const relevantLenses = hasDiff && input.changedRegions?.length
+    ? filterLensesToRegions(activeLenses, input.changedRegions as ChangeRegion[])
+    : activeLenses;
+
+  const lensBlock = relevantLenses
     .map((l) => `### ${l}\n${LENS_DESCRIPTIONS[l]}`)
     .join("\n\n");
 
-  const routeBlock = input.routes.length > 0
-    ? [
-        `## Routes to test`,
-        input.routes.map((r) => `- \`${r}\``).join("\n"),
-        ``,
-        `Navigate to each route above. Every \`test()\` must call \`page.goto()\` with one of these routes.`,
-      ].join("\n")
-    : [
-        `## Route unknown`,
-        `The component couldn't be traced to a specific route. Use \`page.goto("/")\` and adapt.`,
-        `If you can infer the route from the source file path, use that instead.`,
-      ].join("\n");
+  const routeStr = input.routes.length > 0
+    ? input.routes.map((r) => `\`${r}\``).join(", ")
+    : `\`/\` (inferred)`;
 
   const propsBlock = analysis.props.length > 0
-    ? `**Props:** \`${analysis.props.join("`, `")}\` — use these to infer what the component renders`
-    : "";
-  const exportsBlock = analysis.exportedSymbols.length > 0
-    ? `**Exports:** \`${analysis.exportedSymbols.join("`, `")}\``
+    ? `**Props:** \`${analysis.props.join("`, `")}\``
     : "";
 
-  const sections = [
-    `You are a senior QA engineer writing Playwright tests against a LIVE running app in Chromium.`,
+  // ── New file: cover the whole component ──────────────────────────────────
+  if (isNewFile) {
+    return [
+      `You are a senior QA engineer writing Playwright tests for a LIVE app running in Chromium.`,
+      ``,
+      `## New file — full coverage`,
+      `Route: ${routeStr} | Component: **${analysis.componentName ?? analysis.filePath}** (${analysis.componentType})`,
+      propsBlock,
+      ``,
+      `## Source code — read carefully, derive every selector from this`,
+      "```tsx",
+      analysis.sourceText,
+      "```",
+      ``,
+      `## ${STRATEGY[analysis.componentType]}`,
+      ``,
+      buildSecurityBlock(analysis, activeLenses, input.agentSecurityContext),
+      input.fileContext?.summary ?? "",
+      input.scanContext ? `## Project context\n${input.scanContext}` : "",
+      input.skillContext ? `## Project skill file\n${input.skillContext}` : "",
+      ``,
+      `## Test goals — write 4-6 tests covering these lenses`,
+      lensBlock,
+      ``,
+      SELECTOR_RULES,
+      ``,
+      HARD_RULES,
+    ].filter(Boolean).join("\n");
+  }
+
+  // ── Modified file: delta-first ────────────────────────────────────────────
+  // Lead with WHAT CHANGED so the AI derives test scope from the diff,
+  // not from a broad "cover all lenses" instruction.
+  const changeContext = buildChangeContextBlock(
+    input.classificationAction,
+    input.classificationReason,
+    input.fileStatus,
+    input.changedRegions,
+  );
+
+  const testCountHint = input.classificationAction === "LIGHTWEIGHT"
+    ? "Write **1-2 tests** that directly cover this change. No more."
+    : `Write **2-4 tests** focused on the changed behavior. Do NOT write tests for parts of the component that did not change.`;
+
+  return [
+    `You are a senior QA engineer writing Playwright tests for a LIVE app running in Chromium.`,
     ``,
-    `## Quality bar — internalize before writing`,
-    `- Tests must catch REAL bugs. A test that only calls \`toBeVisible()\` on a generic element catches nothing.`,
-    `- **Name tests like user stories**: \`"user submits form and sees confirmation"\`, NOT \`"form test"\``,
-    `- **Assert specific outcomes**: after every action, assert the RESULT — new text, URL change, element appearing/hiding`,
-    `- **Read selectors from source code**: use the EXACT aria-labels, text content, and roles you see in the JSX below`,
-    `- **One behaviour per test**: don't cram 5 assertions into one \`test()\` — split them`,
-    `- Target ${input.classificationAction === "LIGHTWEIGHT" ? "1-3" : "4-8"} focused tests for this file`,
+    `## What changed`,
+    buildDiffBlock(input.diff, input.fileStatus),
+    changeContext,
+    ``,
+    `## Your task`,
+    testCountHint,
+    `Ask yourself: "What user-visible behavior could this diff break?" — write tests for THAT, nothing else.`,
     ``,
     `## File: \`${analysis.filePath}\``,
-    `- Component type: **${analysis.componentType}**${router !== "none" ? ` | Router: **${router}**` : ""}`,
-    analysis.componentName ? `- Component name: **${analysis.componentName}**` : "",
+    `Route: ${routeStr} | Component: **${analysis.componentName ?? analysis.filePath}** (${analysis.componentType})`,
     propsBlock,
-    exportsBlock,
     ``,
-    `## Source code — READ THIS CAREFULLY to derive selectors`,
+    `## Source code — read carefully, derive every selector from this`,
     "```tsx",
     analysis.sourceText,
     "```",
     ``,
-    routeBlock,
-    ``,
     `## ${STRATEGY[analysis.componentType]}`,
     ``,
-    buildDiffBlock(input.diff, input.fileStatus),
-    buildChangeContextBlock(
-      input.classificationAction,
-      input.classificationReason,
-      input.fileStatus,
-      input.changedRegions,
-    ),
     buildSecurityBlock(analysis, activeLenses, input.agentSecurityContext),
     input.fileContext?.summary ?? "",
     input.scanContext ? `## Project context\n${input.scanContext}` : "",
     input.skillContext ? `## Project skill file\n${input.skillContext}` : "",
+    relevantLenses.length > 0
+      ? `## Relevant lenses for this change\n${lensBlock}`
+      : "",
     ``,
-    `## Lenses — write at least one \`test()\` per lens`,
-    `(Skip a lens only if it genuinely doesn't apply to this component type)`,
-    ``,
-    lensBlock,
-    ``,
-    `## Selector rules — the most common cause of bad tests`,
-    ``,
-    `**Rule 1 — Read selectors from source, never invent them**`,
-    `The source code is above. Read it. Every \`getByRole()\`, \`getByText()\`, \`getByLabel()\` must`,
-    `match exactly what's in the JSX — the actual aria-label string, the actual link text, the actual heading.`,
-    ``,
-    `**Rule 2 — Prefer accessible queries in this order:**`,
-    `1. \`page.getByRole("button", { name: /label from source/i })\``,
-    `2. \`page.getByLabel(/label text from source/i)\``,
-    `3. \`page.getByText(/visible text from source/i)\``,
-    `4. \`page.locator("semantic-tag")\` — only when no role/label exists in source`,
-    ``,
-    `**Rule 3 — HTML implicit roles:**`,
-    `- \`<header>\` → role "banner" ONLY when direct child of \`<body>\`. If wrapped, use \`page.locator("header")\``,
-    `- \`<nav>\` → role "navigation". If it has \`aria-label\`, include it: \`page.getByRole("navigation", { name: "Main" })\``,
-    `- \`<main>\` → role "main". \`<footer>\` → role "contentinfo"`,
-    ``,
-    `**Rule 4 — CSS transforms are NOT visibility:**`,
-    `Framer-motion, CSS transitions, and \`transform: translateY(-100%)\` do NOT affect \`toBeVisible()\`.`,
-    `For scroll-hide/show patterns, use \`boundingBox()\`:`,
-    `\`\`\`ts`,
-    `const box = await page.locator("header").boundingBox();`,
-    `expect(box?.y).toBeLessThan(0); // transformed off-screen`,
-    `\`\`\``,
-    ``,
-    `**Rule 5 — Viewport and timing:**`,
-    `- Set viewport BEFORE \`page.goto()\`: \`await page.setViewportSize({ width: 375, height: 667 })\``,
-    `- After scroll or animation triggers: \`await page.waitForTimeout(300)\``,
-    `- Use \`waitForLoadState("domcontentloaded")\` not "networkidle"`,
+    SELECTOR_RULES,
     ``,
     HARD_RULES,
-  ];
-
-  return sections.filter(Boolean).join("\n");
+  ].filter(Boolean).join("\n");
 };
 
 // ─── AI call ──────────────────────────────────────────────────────────────────
@@ -374,7 +473,6 @@ export interface GenerateTestsOptions {
 export const generateTests = async (
   analysis: FileAnalysis,
   config: QAgentConfig,
-  lenses: QaLens[],
   routes: string[],
   cwd: string,
   scanContext?: string | undefined,
@@ -382,17 +480,14 @@ export const generateTests = async (
   fileContext?: FileContext | undefined,
   options: GenerateTestsOptions = {},
 ): Promise<GeneratedTests> => {
-  const activeLenses = analysis.componentType === "server-action"
-    ? [...new Set([...lenses, "security" as QaLens])]
-    : lenses;
-
-  const securityResult = activeLenses.includes("security")
+  // Security agent runs when the component type warrants it — no user config needed
+  const needsSecurity = analysis.componentType === "server-action" || analysis.securityFindings.length > 0;
+  const securityResult = needsSecurity
     ? await runSecurityAnalysis(analysis, config.ai, cwd)
     : null;
 
   const prompt = buildPrompt({
     analysis,
-    lenses: activeLenses,
     routes,
     router,
     skillContext: config.skillContext,
@@ -411,7 +506,6 @@ export const generateTests = async (
   return {
     filePath: analysis.filePath,
     testCode: extractCodeBlock(raw),
-    lenses: activeLenses,
     routes,
   };
 };

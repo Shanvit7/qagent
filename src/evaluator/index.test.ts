@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { FileAnalysis } from "@/analyzer/index";
 import type { AiConfig } from "@/config/types";
 
-vi.mock("../providers/index.js", () => ({
+vi.mock("@/providers/index", () => ({
   generate: vi.fn(),
 }));
 

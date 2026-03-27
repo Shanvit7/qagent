@@ -17,16 +17,8 @@ describe("loadConfig", () => {
     const config = loadConfig("/tmp/nonexistent-qagent-project-xyz");
     expect(config.ai.provider).toBe("ollama");
     expect(config.ai.model).toBe("qwen2.5-coder:7b");
-    expect(config.playwright.lenses).toContain("render");
-    expect(config.playwright.lenses).toContain("security");
     expect(config.classifier.skipTrivial).toBe(true);
-  });
-
-  it("returns all five default lenses", () => {
-    const config = loadConfig("/tmp/nonexistent-qagent-project-xyz");
-    expect(config.playwright.lenses).toEqual(
-      expect.arrayContaining(["render", "interaction", "state", "edge-cases", "security"])
-    );
+    expect(config.playwright.timeout).toBe(15_000);
   });
 
   it("throws when no provider/model configured", async () => {

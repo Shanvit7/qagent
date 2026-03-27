@@ -1,7 +1,5 @@
 import type { ProviderName } from "@/providers/index";
 
-export type QaLens = "render" | "interaction" | "state" | "edge-cases" | "security";
-
 export interface AiConfig {
   provider: ProviderName;
   model: string;
@@ -35,7 +33,6 @@ export interface WatchConfig {
 }
 
 export interface PlaywrightConfig {
-  lenses: QaLens[];
   /** Per-test timeout (ms). Default: 15000 */
   timeout: number;
   server: ServerConfig;

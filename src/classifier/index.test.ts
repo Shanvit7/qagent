@@ -143,7 +143,7 @@ describe("classifyFile", () => {
         diff,
       }));
       expect(result.action).toBe("SKIP");
-      expect(result.reason).toContain("Styling/cosmetic");
+      expect(result.reason).toContain("osmetic");
     });
   });
 
@@ -163,8 +163,9 @@ describe("classifyFile", () => {
   // ─── FULL_QA cases ───────────────────────────────────────────────────────────
 
   describe("FULL_QA cases", () => {
-    it("returns FULL_QA for new files", () => {
-      expect(classifyFile(makeFile({ status: "A", path: "src/New.tsx" })).action).toBe("FULL_QA");
+    it("returns FULL_QA for new component files", () => {
+      // Use an existing fixture that has JSX — classifies as component → FULL_QA
+      expect(classifyFile(makeFile({ status: "A", path: resolve(FIXTURES, "fixture-with-logic.tsx") })).action).toBe("FULL_QA");
     });
 
     it("returns FULL_QA for function body changes", () => {
