@@ -113,6 +113,8 @@ export default defineConfig({
     baseURL: "${serverUrl}",
     screenshot: "only-on-failure",
     trace: "off",
+    actionTimeout: 5_000,
+    navigationTimeout: 10_000,
   },
   timeout: ${timeout},
   reporter: [["json", { outputFile: "results.json" }]],
@@ -197,6 +199,44 @@ export const parsePlaywrightJson = (raw: string): TestCase[] => {
 
 // ─── Runner ───────────────────────────────────────────────────────────────────
 
+export const wrapWithNetworkGuard = (testCode: string, serverUrl: string): string => {
+  let origin = "";
+  try { origin = new URL(serverUrl).origin; } catch { origin = ""; }
+
+  const guardPreamble = `import { test as base, expect } from "@playwright/test";
+
+const ORIGIN = "${origin}";
+const BLOCKED_METHODS = ["POST", "PUT", "PATCH", "DELETE"];
+
+const test = base.extend({
+  page: async ({ page }, use) => {
+    await page.route("**", async (route) => {
+      const req = route.request();
+      const url = new URL(req.url());
+      const method = req.method();
+
+      // Block off-origin traffic entirely to avoid accidental prod/3p calls
+      if (ORIGIN && url.origin !== ORIGIN) return route.abort();
+
+      // Block mutating requests to avoid backend side-effects
+      if (BLOCKED_METHODS.includes(method)) return route.abort();
+
+      // Allow same-origin GET/HEAD to continue (for render/probe)
+      return route.continue();
+    });
+
+    await use(page);
+  },
+});
+`;
+
+  const stripped = testCode
+    .replace(/import\s+\{[^}]*\}\s+from\s+["']@playwright\/test["'];?\s*/g, "")
+    .trim();
+
+  return [guardPreamble, stripped].filter(Boolean).join("\n\n");
+};
+
 export const runPlaywrightTest = (
   testCode: string,
   serverUrl: string,
@@ -214,7 +254,8 @@ export const runPlaywrightTest = (
   const configPath = join(tmpDir, `${hash}.config.ts`);
   const resultsPath = join(tmpDir, `results.json`);
 
-  writeFileSync(testFilePath, testCode, "utf8");
+  const guardedCode = wrapWithNetworkGuard(testCode, serverUrl);
+  writeFileSync(testFilePath, guardedCode, "utf8");
   writeFileSync(configPath, buildPlaywrightConfig(serverUrl, timeout, ssDir), "utf8");
 
   return new Promise((resolve) => {

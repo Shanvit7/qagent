@@ -60,17 +60,19 @@ const LENS_DESCRIPTIONS: Record<QaLens, string> = {
 // ─── Component-type strategy blocks ──────────────────────────────────────────
 // Each strategy maps the component type to the correct Playwright approach + concrete assertions.
 
-const STRATEGY: Record<ComponentType, string> = {
+const STRATEGY_DEFAULT: Record<ComponentType, string> = {
   "client-component": `**Strategy: Client component**
-Navigate to the route. The component is hydrated — test both initial render AND interactions.
+Navigate to the route. The component is hydrated — test initial render AND interactions.
 \`\`\`ts
 await page.goto("/route");
 await page.waitForLoadState("domcontentloaded");
 // Assert specific visible content from the SOURCE (not generic "body")
 await expect(page.getByRole("heading", { name: /actual heading text/i })).toBeVisible();
-// Then test each interactive element — assert the outcome, not just the click
-await page.getByRole("button", { name: /submit/i }).click();
-await expect(page.getByText(/success message from source/i)).toBeVisible();
+// Test interactive elements — assert the client-side OUTCOME of the action
+// e.g. toggle open → assert the toggled element is visible
+// e.g. fill form → assert validation message (NOT success — writes are blocked)
+await page.getByRole("button", { name: /open|toggle|show/i }).click();
+await expect(page.getByRole("dialog")).toBeVisible(); // or whatever the source shows
 \`\`\``,
 
   "server-component": `**Strategy: Server component**
@@ -86,37 +88,36 @@ page.on("console", m => { if (m.type() === "error") errors.push(m.text()); });
 expect(errors.filter(e => e.includes("Hydration"))).toHaveLength(0);
 \`\`\``,
 
-  "api-route": `**Strategy: API route**
-Use \`page.request\` to call the endpoint directly — no browser navigation needed.
+  "api-route": `**Strategy: API route (front-end regression)**
+These files power the UI, but qagent NEVER hits endpoints directly.
+- Navigate to the route(s) listed above that consume this API
+- Trigger the UI that would call the API (click "Refresh", search, filter, etc.)
+- Assert what the user sees before and after the interaction: skeletons, empty states, hydrated data
+- Simulate failures by asserting fallback copy or inline errors that already render client-side
+- **Never** use Playwright's request context, custom fetch helpers, or \`page.request.*\`
 \`\`\`ts
-// Happy path
-const res = await page.request.get("/api/route");
-expect(res.status()).toBe(200);
-const body = await res.json();
-expect(body).toHaveProperty("expectedField");
-// Auth gate
-const unauthed = await page.request.get("/api/route", { headers: {} });
-expect(unauthed.status()).toBe(401);
-// Validation error
-const invalid = await page.request.post("/api/route", { data: {} });
-expect(invalid.status()).toBe(400);
+await page.goto("/dashboard");
+await expect(page.getByRole("heading", { name: "Billing" })).toBeVisible();
+await page.getByRole("button", { name: "Refresh invoices" }).click();
+await expect(page.getByRole("row", { name: /invoice #/i })).toBeVisible();
 \`\`\``,
 
   "server-action": `**Strategy: Server action**
-Server actions are invoked via form submission. Navigate to the form page, fill inputs, submit, assert.
+Writes are blocked by the network guard. Test ONLY client-side behavior: validation, field states, error boundaries.
 \`\`\`ts
 await page.goto("/route-with-form");
 await page.waitForLoadState("domcontentloaded");
-// Fill each input using the aria-label or placeholder from the SOURCE
-await page.getByLabel(/name/i).fill("Test User");
+
+// Test 1: required-field validation — submit empty form, assert client message
 await page.getByRole("button", { name: /submit/i }).click();
-// Assert the success outcome — redirect URL or success message text from SOURCE
-await expect(page).toHaveURL(/success|dashboard/);
-// OR: await expect(page.getByText(/created successfully/i)).toBeVisible();
-// Also test the error path — empty required fields
+await expect(page.getByText(/required|please fill|cannot be empty/i)).toBeVisible();
+
+// Test 2: inline field validation — fill invalid value, assert error
+await page.getByLabel(/email/i).fill("not-an-email");
 await page.getByRole("button", { name: /submit/i }).click();
-await expect(page.getByText(/required|please fill/i)).toBeVisible();
-\`\`\``,
+await expect(page.getByText(/invalid email|valid email/i)).toBeVisible();
+\`\`\`
+DO NOT assert success messages, "Thank you", "Submitted", redirects, or any text that requires a server reply.`,
 
   "hook": `**Strategy: Custom hook**
 Hooks have no UI — test through the page that uses them. Find the route that renders a component using this hook.
@@ -204,9 +205,26 @@ Read the JSX and extract exact aria-labels, roles, and text content. Never inven
 3. \`page.getByText(/visible text/i)\`
 4. \`page.locator("semantic-tag")\` — only when no role/label exists
 
-**Rule 4 — HTML roles**
+**Rule 4 — No Tailwind classes in selectors**
+CSS selectors cannot contain \`/\`. Tailwind opacity classes like \`text-primary/50\` or \`bg-muted/20\` CRASH the selector engine.
+Never use \`.locator('tag.tw-class/opacity')\`. Use \`getByRole\`, \`getByText\`, or parent scoping instead.
+
+**Rule 5 — HTML roles**
 - \`<header>\` → role "banner" only when direct child of \`<body>\`. Otherwise \`page.locator("header").first()\`
 - \`<nav aria-label="X">\` → \`page.getByRole("navigation", { name: "X" })\``;
+
+const NETWORK_GUARD_BLOCK = `## Front-end regression guard — ALWAYS active
+qagent validates DOM and interaction regressions only. Network writes and Playwright's request context are blocked.
+
+Rules:
+- NEVER use \`page.request.*\`, custom fetch helpers, or APIRequestContext — stay inside the browser page
+- POST, PUT, PATCH, DELETE are blocked — the server never receives or replies to them
+- NEVER assert success messages, confirmation text, or redirects after a form submit or mutating click
+- NEVER use \`waitForResponse()\`, \`waitForRequest()\`, or \`waitForNavigation()\` tied to a mutation
+- DO assert client-side validation, inline errors, disabled/loading states, or unchanged forms
+- Focus on what the user sees before and after the interaction — that's the regression surface
+- Any assertion that depends on a backend reply will time out — remove it
+`;
 
 // Maps classifier regions to plain-English test focus hints.
 const REGION_FOCUS: Partial<Record<ChangeRegion, string>> = {
@@ -366,7 +384,8 @@ const buildPrompt = (input: PromptInput): string => {
       "```",
       ``,
       probeBlock,
-      `## ${STRATEGY[analysis.componentType]}`,
+      NETWORK_GUARD_BLOCK,
+      `## ${STRATEGY_DEFAULT[analysis.componentType]}`,
       ``,
       buildSecurityBlock(analysis, activeLenses, input.agentSecurityContext),
       input.fileContext?.summary ?? "",
@@ -394,8 +413,13 @@ const buildPrompt = (input: PromptInput): string => {
     input.changedRegions,
   );
 
+  const lightweightIsInteractive = (input.changedRegions ?? []).some((r) =>
+    ["event-handler", "hook-deps", "server-action", "jsx-markup"].includes(r),
+  );
   const testCountHint = input.classificationAction === "LIGHTWEIGHT"
-    ? "Write **1 test** that directly verifies the changed behavior still works for a user. No more."
+    ? lightweightIsInteractive
+      ? "Write **2 focused tests**: one smoke test (page loads, element visible) and one interaction test (the changed behavior still works). No more than 2."
+      : "Write **1 test** that directly verifies the changed behavior still works for a user. No more."
     : `Write **2-3 behavioral regression tests**. Each answers: "can a user still do X after this change?" Test the flow, not the implementation.`;
 
   return [
@@ -419,7 +443,8 @@ const buildPrompt = (input: PromptInput): string => {
     "```",
     ``,
     probeBlock,
-    `## ${STRATEGY[analysis.componentType]}`,
+    NETWORK_GUARD_BLOCK,
+    `## ${STRATEGY_DEFAULT[analysis.componentType]}`,
     ``,
     buildSecurityBlock(analysis, activeLenses, input.agentSecurityContext),
     input.fileContext?.summary ?? "",
@@ -438,7 +463,7 @@ const buildPrompt = (input: PromptInput): string => {
 // ─── AI call ──────────────────────────────────────────────────────────────────
 
 const callProvider = async (prompt: string, config: AiConfig): Promise<string> =>
-  generate(config, prompt, { temperature: 0.2 });
+  generate(config, prompt, { temperature: 0 });
 
 // ─── Refine ───────────────────────────────────────────────────────────────────
 
@@ -502,4 +527,11 @@ export const generateTests = async (
     testCode: extractCodeBlock(raw),
     routes,
   };
+};
+
+export const __testables = {
+  buildPrompt,
+  STRATEGY_DEFAULT,
+  NETWORK_GUARD_BLOCK,
+  SELECTOR_RULES,
 };

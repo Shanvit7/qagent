@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parsePlaywrightJson } from "./index";
+import { parsePlaywrightJson, wrapWithNetworkGuard } from "./index";
 
 describe("runner", () => {
   describe("parsePlaywrightJson", () => {
@@ -140,6 +140,28 @@ describe("runner", () => {
 
       const cases = parsePlaywrightJson(JSON.stringify(report));
       expect(cases[0]!.status).toBe("fail");
+    });
+  });
+
+  describe("wrapWithNetworkGuard", () => {
+    it("strips playwright imports and injects guard", () => {
+      const code = `import { test, expect } from "@playwright/test";
+
+test("works", async ({ page }) => {
+  await page.goto("/foo");
+  await page.getByRole("button", { name: "Save" }).click();
+});`;
+
+      const wrapped = wrapWithNetworkGuard(code, "http://localhost:3000");
+      expect(wrapped).toContain("const ORIGIN = \"http://localhost:3000\"");
+      expect(wrapped).toContain("route.abort()");
+      expect(wrapped).not.toContain("import { test, expect } from \"@playwright/test\"");
+      expect(wrapped).toContain("test(\"works\"");
+    });
+
+    it("falls back when serverUrl is invalid", () => {
+      const wrapped = wrapWithNetworkGuard("test('x', async ()=>{});", "not a url");
+      expect(wrapped).toContain("const ORIGIN = \"\"");
     });
   });
 });

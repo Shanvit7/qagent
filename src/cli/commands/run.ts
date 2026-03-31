@@ -31,6 +31,7 @@ import {
 } from "@/reporter/index";
 import { loadFailureContext, updateFailureContext, type FailureContext } from "@/feedback/index";
 import { getSessionUsage, resetSessionUsage, formatTokenDelta, formatTokenSummary } from "@/providers/index";
+import { sanitizeTestCode } from "@/sanitizer/index";
 import { MIN_ITERATIONS, MAX_ITERATIONS } from "@/config/loader";
 
 // -- Constants --
@@ -127,14 +128,51 @@ const processFile = async (
     return { report: null, failureText: null };
   }
 
-  // -- Evaluator loop: run → evaluate → refine --
+  // ── Sanitize generated code before first run ─────────────────────────────
+  {
+    const san = sanitizeTestCode(testCode);
+    if (san.applied.length > 0) {
+      testCode = san.code;
+      p.log.message(color.dim(`  Sanitized: ${san.applied.join(", ")}`));
+    }
+  }
+
+  // ── Evaluator loop ────────────────────────────────────────────────────────
+  //
+  // Guarantees:
+  //   1. MONOTONIC: each iteration must pass ≥ as many tests as the best so
+  //      far. If it regresses, revert to bestCode immediately — don't waste
+  //      iterations trying to fix a worse starting point.
+  //   2. DETERMINISTIC FIXES FIRST: the sanitizer runs after every AI
+  //      refinement, catching known-bad patterns before Playwright sees them.
+  //   3. PER-TEST FOCUS: runtime failures are fixed one test at a time with
+  //      a minimal prompt (error + test + source). No file-wide re-generation.
+  //   4. ESCALATION: after 2 consecutive failures of the same test, simplify
+  //      it to a smoke test instead of trying harder.
+
   const evalConfig = config.evaluator;
   let bestResult: StructuredTestResult | undefined;
   let bestCode = testCode;
+  let bestPassCount = 0;
   let bestScore = 0;
   let lastCritique: string | undefined;
+  let lastQualityScore = 0;
+
+  // consecutive failure counter per test name
+  const failStreak = new Map<string, number>();
 
   const maxIter = evalConfig.enabled ? evalConfig.maxIterations : 1;
+
+  /** Refine + sanitize in one step. Every AI refinement goes through this. */
+  const refineAndSanitize = async (code: string, prompt: string): Promise<string> => {
+    let refined = await refineTests(code, prompt, config.ai);
+    const san = sanitizeTestCode(refined);
+    if (san.applied.length > 0) {
+      refined = san.code;
+      p.log.message(color.dim(`    Sanitized: ${san.applied.join(", ")}`));
+    }
+    return refined;
+  };
 
   for (let iter = 1; iter <= maxIter; iter++) {
     // Pre-validate: if the generated code has no test() blocks, skip the
@@ -172,7 +210,7 @@ const processFile = async (
       ].join("\n");
 
       try {
-        testCode = await refineTests(testCode, noTestPrompt, config.ai);
+        testCode = await refineAndSanitize(testCode, noTestPrompt);
         const refineTokens = formatTokenDelta(beforeRefineNoTest, getSessionUsage());
         p.log.message(color.dim(`  Regenerated${refineTokens ? `  ${refineTokens}` : ""}`));
       } catch {
@@ -197,7 +235,7 @@ const processFile = async (
 
         const beforePreRefine = getSessionUsage();
         try {
-          testCode = await refineTests(testCode, preCheck.feedback, config.ai);
+          testCode = await refineAndSanitize(testCode, preCheck.feedback);
           const refineTokens = formatTokenDelta(beforePreRefine, getSessionUsage());
           p.log.message(color.dim(`  Refined (pre-check)${refineTokens ? `  ${refineTokens}` : ""}`));
         } catch {
@@ -244,87 +282,151 @@ const processFile = async (
       );
     }
 
-    // Track best
     const runtimePenalty = Math.min(3, failedTests.length * 0.5);
 
-    if (!evalConfig.enabled) {
-      bestResult = result;
+    // ── Monotonic guarantee: never regress ────────────────────────────────
+    // If this iteration passes FEWER tests than our best, discard it and
+    // continue refining from bestCode instead. This prevents the AI from
+    // "trying a different strategy" that breaks previously passing tests.
+    if (iter > 1 && passedCount < bestPassCount && bestPassCount > 0) {
+      p.log.message(color.dim(`  Iteration ${iter}: regressed (${passedCount}/${result.testCases.length} vs best ${bestPassCount}) — reverting`));
+      testCode = bestCode;
+      continue;
+    }
+
+    // Update best tracking
+    if (!noTestsFound && passedCount >= bestPassCount) {
+      bestPassCount = passedCount;
       bestCode = testCode;
+      bestResult = result;
+      bestScore = Math.max(bestScore, Math.max(1, 5 - runtimePenalty));
+    }
+
+    if (!evalConfig.enabled) {
       break;
     }
 
-    // -- Evaluate --
+    // ── Branch A: tests failed → fix each one individually, no evaluator ──
+    if (failedTests.length > 0) {
+      // Update streak counters
+      for (const t of failedTests)  failStreak.set(t.name, (failStreak.get(t.name) ?? 0) + 1);
+      for (const t of result.testCases.filter((tc) => tc.status !== "fail")) failStreak.delete(t.name);
+
+      if (iter === maxIter) { testCode = bestCode; p.log.message(color.dim(`  Using best iteration (score: ${bestScore.toFixed(1)})`)); break; }
+
+      // Fix each failing test with its own focused prompt
+      const fixSpinner = p.spinner();
+      fixSpinner.start(`Fixing ${failedTests.length} failure(s) — iteration ${iter}/${maxIter}`);
+
+      let anyFixed = false;
+      for (const t of failedTests.slice(0, 4)) {
+        const streak = failStreak.get(t.name) ?? 1;
+        const escalate = streak >= 2;
+
+        const singleTestPrompt = [
+          `Fix this failing Playwright test for \`${analysis.filePath}\` (route: \`${routes[0] ?? "/"}\`).`,
+          "",
+          "## Source code — find the correct selectors here",
+          "```tsx",
+          analysis.sourceText,
+          "```",
+          "",
+          "## The full test file (do NOT change passing tests)",
+          "```ts",
+          testCode,
+          "```",
+          "",
+          `## Failing test: "${t.name}"`,
+          "```",
+          (t.failureMessage ?? "unknown error").slice(0, 600),
+          "```",
+          "",
+          escalate
+            ? [
+                `This test has failed ${streak} times. Stop trying complex assertions.`,
+                `Simplify "${t.name}" to: navigate → assert the key element is visible (toBeVisible only).`,
+                `Do NOT assert text content, attributes, or post-interaction state.`,
+              ].join("\n")
+            : `Read the error and source above. Fix only the "${t.name}" test. Keep all other tests identical.`,
+          "",
+          HARD_RULES,
+        ].join("\n");
+
+        try {
+          const before = getSessionUsage();
+          testCode = await refineAndSanitize(testCode, singleTestPrompt);
+          anyFixed = true;
+          const tok = formatTokenDelta(before, getSessionUsage());
+          fixSpinner.message(`Fixed "${t.name}"${tok ? color.dim(`  ${tok}`) : ""}`);
+        } catch {
+          // leave this test as-is, move to next
+        }
+      }
+
+      if (anyFixed) {
+        fixSpinner.stop(`Refined (${failedTests.length} failure(s) addressed)`);
+      } else {
+        fixSpinner.stop(color.dim("Refinement failed — using best"));
+        testCode = bestCode;
+        break;
+      }
+      continue;
+    }
+
+    // ── Branch B: all tests pass → evaluator for quality ──────────────────
+    failStreak.clear();
+
+    if (iter === maxIter) { testCode = bestCode; p.log.message(color.dim(`  Using best iteration (${bestPassCount} pass)`)); break; }
+
     const evalSpinner = p.spinner();
-    evalSpinner.start(`Evaluating (iteration ${iter}/${maxIter})`);
+    evalSpinner.start(`Evaluating quality (iteration ${iter}/${maxIter})`);
 
     let evaluation: EvaluationResult;
     const beforeEval = getSessionUsage();
     try {
       evaluation = await evaluateTests(testCode, analysis, config.ai, {
         changedRegions: classification.changedRegions,
-        failedTests: failedTests.map((t) => ({
-          name: t.name,
-          error: t.failureMessage,
-          screenshotPath: t.screenshotPath,
-        })),
         previousCritique: lastCritique,
         iteration: iter,
       });
     } catch {
       evalSpinner.stop(color.dim("Evaluator unavailable — using current tests"));
-      bestResult = result;
-      bestCode = testCode;
+      bestResult = result; bestCode = testCode;
       break;
     }
 
     const evalTokens = formatTokenDelta(beforeEval, getSessionUsage());
     const tokenSuffix = evalTokens ? color.dim(`  ${evalTokens}`) : "";
-
     const adjustedScore = Math.max(1, evaluation.overallScore - runtimePenalty);
 
-    // Never promote a zero-test result as "best" — even a high evaluator score
-    // on code that produced no runnable tests is worse than any real test run.
-    if (!noTestsFound && adjustedScore > bestScore) {
-      bestScore = adjustedScore;
-      bestCode = testCode;
-      bestResult = result;
-    }
+    if (!noTestsFound && adjustedScore > bestScore) { bestScore = adjustedScore; bestCode = testCode; bestResult = result; }
 
-    // 0 test cases means the generated code had no runnable tests — don't
-    // accept this as a pass regardless of evaluator score. Force refinement.
-    if (!noTestsFound && failedTests.length === 0 && (evaluation.passed || adjustedScore >= evalConfig.acceptThreshold)) {
-      evalSpinner.stop(color.green(`Passed (score: ${adjustedScore.toFixed(1)}/10)`) + tokenSuffix);
+    if (evaluation.passed || adjustedScore >= evalConfig.acceptThreshold) {
+      evalSpinner.stop(color.green(`Quality passed (score: ${adjustedScore.toFixed(1)}/10)`) + tokenSuffix);
       break;
     }
 
-    if (noTestsFound) {
-      evalSpinner.stop(color.yellow(`Score: ${adjustedScore.toFixed(1)}/10 — no tests ran, refining`) + tokenSuffix);
-    } else {
-      evalSpinner.stop(color.yellow(`Score: ${adjustedScore.toFixed(1)}/10`) + tokenSuffix);
-    }
+    evalSpinner.stop(color.yellow(`Score: ${adjustedScore.toFixed(1)}/10`) + tokenSuffix);
 
-    if (iter === maxIter) {
-      testCode = bestCode;
-      p.log.message(color.dim(`  Using best iteration (score: ${bestScore.toFixed(1)})`));
-      break;
-    }
+    // Quality refinement — pass previous critique if score stalled
+    const scoreStalled = iter > 1 && adjustedScore - lastQualityScore < 0.3;
+    lastQualityScore = adjustedScore;
 
-    // -- Refine --
     const refineSpinner = p.spinner();
-    refineSpinner.start("Refining tests");
+    refineSpinner.start(scoreStalled ? "Refining quality (escalated)" : "Refining quality");
     try {
       const prompt = buildRefinementPrompt({
         testCode,
         sourceCode: analysis.sourceText,
         filePath: analysis.filePath,
         route: routes[0] ?? "/",
-        kind: failedTests.length > 0 ? "runtime" : "quality",
+        kind: "quality",
         iteration: iter,
-        failedTests: failedTests.map((t) => ({ name: t.name, error: t.failureMessage })),
         evaluation,
+        previousCritique: scoreStalled ? lastCritique : undefined,
       });
       const beforeRefine = getSessionUsage();
-      testCode = await refineTests(testCode, prompt, config.ai);
+      testCode = await refineAndSanitize(testCode, prompt);
       lastCritique = evaluation.critique;
       const refineTokens = formatTokenDelta(beforeRefine, getSessionUsage());
       refineSpinner.stop(`Refined${refineTokens ? color.dim(`  ${refineTokens}`) : ""}`);

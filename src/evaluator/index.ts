@@ -33,7 +33,7 @@ export const HARD_RULES = `## Hard rules — non-negotiable
 - Never invent selectors: no \`.my-class\`, no \`#some-id\`, no guessed aria-labels
 - Query hierarchy: \`getByRole\` → \`getByLabel\` → \`getByText\` → \`page.locator("tag")\`
 - \`waitForLoadState("domcontentloaded")\` after navigation — NOT "networkidle"
-- NO vi.mock(), NO jest.mock(), NO mocks, NO jsdom, NO @testing-library
+- NO vi.mock(), NO jest.mock(), NO mocks, NO jsdom, NO @testing-library, NO \`page.request.*\`, NO APIRequestContext
 - **Locators that match by name/label become stale after interactions that change that name/label.**
   If you click a button \`{ name: "Open menu" }\` and it changes to \`"Close menu"\`, the original locator
   no longer matches. Use a STABLE locator for toggle elements — e.g. a CSS selector on an attribute
@@ -43,7 +43,15 @@ export const HARD_RULES = `## Hard rules — non-negotiable
   If your locator could match multiple elements, scope it:
   \`page.locator("header").first()\`  — when there are two
   \`page.locator("nav").filter({ hasText: /about/i })\`  — filter by content
-  \`page.getByRole("img", { name: /logo/i }).first()\`  — first matching`;
+  \`page.getByRole("img", { name: /logo/i }).first()\`  — first matching
+- **Network guard is ALWAYS active — POST/PUT/PATCH/DELETE are blocked and will never complete:**
+  NEVER assert success messages, confirmation text, redirects, or any outcome that requires a server response
+  after a form submission or mutating action. The request is aborted — the server never replies.
+  ✅ DO assert: validation messages ("required", "invalid email"), disabled/loading button states,
+     error boundaries ("Something went wrong"), or the form's pre-submission state.
+  ❌ NEVER assert: "Thank you", "Submitted", "Success", URL redirects, or any post-write UI state.`;
+
+const SERVER_CALL_REGEX = /\b(?:page|context)\.request\b|\bAPIRequestContext\b/i;
 
 // ─── Evaluator prompt ─────────────────────────────────────────────────────────
 
@@ -86,6 +94,11 @@ ${failedTests.map((t) => {
 }).join("\n\n")}
 
 For each failure, determine:
+- **network-blocked** — the test timed out waiting for an outcome that requires a server mutation (POST/PUT/PATCH/DELETE).
+  The network guard blocks all mutating requests — the server never replies, so the expected text/redirect never appears.
+  → Fix: replace success/confirmation assertions with client-side-only assertions:
+    validation messages, disabled/loading buttons, error boundaries, or pre-submission form state.
+  → NEVER assert "Thank you", "Submitted", "Success", or URL redirects after a button click.
 - **selector-issue** — element exists in the app but the query doesn't match (wrong role, label, or text)
   → Fix: look at the source code and use the exact aria-label/text/role shown there
 - **timing-issue** — element exists but wasn't awaited properly (missing waitForLoadState or waitForSelector)
@@ -93,6 +106,8 @@ For each failure, determine:
 - **real-bug** — the app genuinely doesn't behave as the test expects
   → Note this in fixSuggestions so the developer can investigate`
     : "";
+
+
 
   return `You are a strict QA evaluator for Playwright browser tests. Your job is to catch weak, shallow, or broken tests before they ship.
 
@@ -126,7 +141,7 @@ Respond with a single JSON object (no markdown, no explanation outside the JSON)
   "fixSuggestions": [
     "<one concrete, actionable fix per issue — e.g. 'In test X, replace getByText(\"Click\") with getByRole(\"button\", { name: /submit/i }) from line 42 of source'>"
   ],
-  "diagnosis": "<selector-issue | timing-issue | real-bug | mixed | pass>"
+  "diagnosis": "<network-blocked | selector-issue | timing-issue | real-bug | mixed | pass>"
 }`;
 };
 
@@ -260,6 +275,64 @@ export const buildRefinementPrompt = (ctx: RefinementContext): string => {
     "",
   ];
 
+  const usesServerRequests = SERVER_CALL_REGEX.test(ctx.testCode);
+  if (usesServerRequests) {
+    sections.push(
+      "## Remove direct server/API requests",
+      "These tests call page.request.* or APIRequestContext. qagent only validates DOM-level regressions.",
+      "Replace every direct HTTP request with the real user flow: click the buttons, fill the inputs, and assert DOM changes.",
+      "Example:",
+      "```ts",
+      "// ❌ Bad",
+      'const res = await page.request.get("/api/data");',
+      "expect(res.status()).toBe(200);",
+      "",
+      "// ✅ Good",
+      'await page.goto("/dashboard");',
+      'await page.getByRole("button", { name: /refresh/i }).click();',
+      'await expect(page.getByRole("row", { name: /invoice/i })).toBeVisible();',
+      "```",
+      "Do not move on until every server call is deleted.",
+      "",
+    );
+  }
+
+  // Animation / CSS-transition timing detection
+  // If any failing test timed out while asserting a UI element that likely lives
+  // behind an animation (menu, drawer, dialog, accordion, tab), inject concrete
+  // wait guidance — the generic timeout fix never surfaces this root cause.
+  const ANIMATION_TRIGGER_RE = /menu|drawer|modal|dialog|accordion|tab|collapse|slide|fade|dropdown/i;
+  const animationFailed = ctx.failedTests?.some((t) => {
+    const isTimeout = /TimeoutError|waiting for|locator\.nth|toBeVisible|toHaveAttribute/i.test(t.error ?? "");
+    const targetIsAnimated = ANIMATION_TRIGGER_RE.test(t.name) || ANIMATION_TRIGGER_RE.test(ctx.testCode);
+    return isTimeout && targetIsAnimated;
+  }) ?? false;
+
+  if (animationFailed) {
+    sections.push(
+      "## Animation / CSS transition timing",
+      "One or more failures are most likely animation race conditions — the assertion ran before",
+      "the element finished entering. This is common with CSS transitions, JS-driven show/hide",
+      "that doesn't update aria-hidden synchronously, and animated component libraries.",
+      "",
+      "Fix pattern — wait for the element to be stable BEFORE asserting it:",
+      "```ts",
+      "// After clicking a trigger that starts an animation:",
+      "await page.getByRole('button', { name: /open menu/i }).click();",
+      "// Wait for the animated element to reach its final visible state",
+      "await page.waitForSelector('[data-state=\"open\"], [aria-expanded=\"true\"], nav.open', { state: 'visible' });",
+      "// OR wait for a known child element inside the animated container:",
+      "await page.waitForSelector('nav a[href=\"/contact\"]', { state: 'visible' });",
+      "// THEN assert",
+      "await expect(page.getByRole('link', { name: /contact/i })).toBeVisible();",
+      "```",
+      "If the component uses a JS animation library or custom CSS transition, there is no reliable",
+      "aria signal during the animation — use waitForSelector with a short timeout (2000ms)",
+      "targeting the final DOM state (e.g. a data-attribute, aria-expanded, or a child element).",
+      "",
+    );
+  }
+
   // Runtime failures — most actionable signal
   if (ctx.kind === "runtime" && ctx.failedTests?.length) {
     sections.push(`## ${ctx.failedTests.length} test(s) failing at runtime — fix these first`);
@@ -268,6 +341,12 @@ export const buildRefinementPrompt = (ctx: RefinementContext): string => {
       const isStrictMode   = msg.includes("strict mode violation") || msg.includes("resolved to");
       const isTimeout      = msg.includes("TimeoutError") || msg.includes("waiting for");
 
+      // Detect network-blocked: timeout + test code contains success/confirmation assertions
+      // after a click — this is the "guard blocked the POST, success message never appeared" pattern
+      const hasSubmitClick = ctx.testCode.includes(".click(") || ctx.testCode.includes(".click()");
+      const hasSuccessAssert = /success|thank.you|submitted|confirmed|redirect/i.test(ctx.testCode);
+      const isNetworkBlocked = isTimeout && hasSubmitClick && hasSuccessAssert;
+
       // Extract what the locator was, e.g. "locator('header') resolved to 2 elements"
       const strictMatch = msg.match(/locator\(([^)]+)\)\s+resolved to (\d+) elements/);
       const locatorStr  = strictMatch ? strictMatch[1] : null;
@@ -275,7 +354,30 @@ export const buildRefinementPrompt = (ctx: RefinementContext): string => {
 
       sections.push(`### ❌ "${t.name}"`, "```", msg, "```", "");
 
-      if (isStrictMode) {
+      if (isNetworkBlocked) {
+        sections.push(
+          `**Fix — network-blocked (POST/PUT/PATCH/DELETE are aborted by the network guard):**`,
+          `The test timed out because it asserted an outcome that requires a server response (e.g. success message,`,
+          `redirect, confirmation text). The network guard blocks all mutating requests — the server never replies.`,
+          ``,
+          `Replace every success/confirmation assertion with a client-side-only assertion:`,
+          `\`\`\``,
+          `// ❌ Remove — server never replies, this will always timeout:`,
+          `// await expect(page.getByText(/success|thank you|submitted/i)).toBeVisible();`,
+          ``,
+          `// ✅ Replace with — assert client-side validation or error state instead:`,
+          `await page.getByRole("button", { name: /submit/i }).click();`,
+          `// Option A: assert validation fires (empty required field)`,
+          `await expect(page.getByText(/required|please fill|invalid/i)).toBeVisible();`,
+          `// Option B: assert button becomes disabled/loading`,
+          `await expect(page.getByRole("button", { name: /submit/i })).toBeDisabled();`,
+          `// Option C: assert error boundary on blocked write`,
+          `await expect(page.getByText(/error|unavailable|try again/i)).toBeVisible();`,
+          `\`\`\``,
+          `Pick the option that matches what the source code actually renders on validation failure.`,
+          "",
+        );
+      } else if (isStrictMode) {
         sections.push(
           `**Fix — strict mode violation${locatorStr ? ` on ${locatorStr}` : ""}:**`,
           `Your selector matched ${countStr ?? "multiple"} elements. Responsive layouts duplicate elements (desktop + mobile hidden via CSS).`,

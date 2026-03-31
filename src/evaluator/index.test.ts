@@ -6,11 +6,12 @@ vi.mock("@/providers/index", () => ({
   generate: vi.fn(),
 }));
 
-import { evaluateTests, buildRefinementPrompt } from "./index";
+import { evaluateTests, buildRefinementPrompt, HARD_RULES } from "./index";
 import { generate } from "@/providers/index";
 import type { EvaluationResult } from "./criteria";
 
-const mockGenerate = vi.mocked(generate);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockGenerate = generate as unknown as { mock: { calls: any[] }; mockResolvedValueOnce: (v: any) => void };
 
 const mockAnalysis: FileAnalysis = {
   filePath: "src/Button.tsx",
@@ -18,7 +19,6 @@ const mockAnalysis: FileAnalysis = {
   componentName: "Button",
   componentType: "client-component",
   props: [],
-  exportedSymbols: ["Button"],
   securityFindings: [],
 };
 
@@ -129,6 +129,11 @@ describe("evaluator", () => {
       await evaluateTests("test code", mockAnalysis, mockAiConfig);
       const opts = mockGenerate.mock.calls[0]![2] as Record<string, unknown>;
       expect(opts.jsonMode).toBe(true);
+    });
+
+    it("HARD_RULES ban page.request and APIRequestContext", () => {
+      expect(HARD_RULES).toContain("page.request.*");
+      expect(HARD_RULES).toContain("APIRequestContext");
     });
   });
 
@@ -242,5 +247,20 @@ describe("evaluator", () => {
 
       expect(prompt).toContain("/pricing");
     });
+
+    it("adds guidance when tests call page.request", () => {
+      const prompt = buildRefinementPrompt({
+        testCode: "await page.request.post('/api/save');",
+        sourceCode: "source",
+        filePath: "file.tsx",
+        route: "/dashboard",
+        kind: "quality",
+        iteration: 1,
+      });
+
+      expect(prompt).toContain("Remove direct server/API requests");
+      expect(prompt).toContain("Do not move on until every server call is deleted");
+    });
+
   });
 });

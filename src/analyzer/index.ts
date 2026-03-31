@@ -1,9 +1,9 @@
 /**
- * Analyzer — ts-morph AST → FileAnalysis
+ * Analyzer — lightweight text scan → FileAnalysis
  *
- * Derives component type, props, exported symbols, and lightweight
- * security findings from a TypeScript/TSX source file.  All output
- * feeds the Playwright test generator and evaluator.
+ * Derives component type, props, and lightweight security findings from
+ * a TypeScript/TSX source file. Selector and visibility truth comes from
+ * the runtime probe (src/probe/), not static AST heuristics.
  */
 
 import { readFileSync } from "node:fs";
@@ -33,7 +33,7 @@ export interface FileAnalysis {
    * Playwright test strategy to use for this file.
    * - client-component → interact via clicks/fills
    * - server-component → assert rendered content only
-   * - api-route        → use page.request.*
+   * - api-route        → drive the UI that consumes the API (never call page.request)
    * - server-action    → test via form submission
    * - hook             → test via the page that uses it
    * - utility          → test via observable page behavior
@@ -43,8 +43,6 @@ export interface FileAnalysis {
   componentName: string | undefined;
   /** Props interface members — injected into prompt to help AI derive selectors. */
   props: string[];
-  /** Exported symbol names — used to surface what the AI should test. */
-  exportedSymbols: string[];
   /**
    * Static security findings — used by the security lens to generate
    * browser tests (e.g. assert injected script is escaped, auth gates hold).
@@ -141,27 +139,6 @@ const extractProps = (text: string): string[] => {
 };
 
 /**
- * Extract exported symbol names from source text (fast regex fallback
- * used when ts-morph is unnecessary for the common case).
- */
-const extractExports = (text: string): string[] => {
-  const symbols: string[] = [];
-
-  for (const m of text.matchAll(/^export\s+(?:default\s+)?(?:async\s+)?(?:function|class|const|let|var)\s+(\w+)/gm)) {
-    if (m[1] && m[1] !== "default") symbols.push(m[1]);
-  }
-  for (const m of text.matchAll(/^export\s+\{\s*([^}]+)\}/gm)) {
-    for (const name of (m[1] ?? "").split(",")) {
-      const parts = name.trim().split(/\s+as\s+/);
-      const clean = parts[parts.length - 1]?.trim();
-      if (clean) symbols.push(clean);
-    }
-  }
-
-  return [...new Set(symbols)];
-};
-
-/**
  * Heuristically derive the primary component / function name from
  * `export default function Foo` or `const Foo = ...` patterns.
  */
@@ -196,7 +173,6 @@ export const analyzeFile = (filePath: string): FileAnalysis => {
   const componentType    = deriveComponentType(absolutePath, sourceText);
   const componentName    = extractComponentName(sourceText, absolutePath);
   const props            = extractProps(sourceText);
-  const exportedSymbols  = extractExports(sourceText);
   const securityFindings = scanSecurity(sourceText, absolutePath);
 
   return {
@@ -205,7 +181,6 @@ export const analyzeFile = (filePath: string): FileAnalysis => {
     componentType,
     componentName,
     props,
-    exportedSymbols,
     securityFindings,
   };
 };

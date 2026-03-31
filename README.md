@@ -50,9 +50,6 @@ When you stage a file, qagent runs a pipeline:
 * Runs tests in browser
 * Fixes failures iteratively
 
-> 💡 The key advantage:
-> Tests are based on **observed UI behavior**, not guessed selectors.
-
 ---
 
 ## 🧩 Quick Start
@@ -252,7 +249,15 @@ bun test src/classifier
 
 ---
 
+## ⚠️ Limitations
+
+qagent tests front-end behavior only — rendering, interactions, validation, and error states.
+It does not test server logic, database writes, or auth flows. For backend coverage, pair it with a separate integration suite.
+
+---
+
 ## 📋 Requirements
+
 
 * Node.js 18+
 * Bun (dev)
