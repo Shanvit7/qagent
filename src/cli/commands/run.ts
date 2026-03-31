@@ -216,6 +216,7 @@ const processFile = async (
     const beforeEval = getSessionUsage();
     try {
       evaluation = await evaluateTests(testCode, analysis, config.ai, {
+        changedRegions: classification.changedRegions,
         failedTests: failedTests.map((t) => ({
           name: t.name,
           error: t.failureMessage,

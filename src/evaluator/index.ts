@@ -9,6 +9,7 @@
 import type { AiConfig } from "@/config/types";
 import type { FileAnalysis } from "@/analyzer/index";
 import { generate } from "@/providers/index";
+import type { ChangeRegion } from "@/classifier/index";
 import {
   type GradingCriterion,
   type EvaluationScore,
@@ -17,6 +18,7 @@ import {
   computeOverallScore,
   allCriteriaPassed,
   buildCriteriaPromptSection,
+  buildCriteriaForRegions,
 } from "./criteria";
 
 // ─── Shared rules ─────────────────────────────────────────────────────────────
@@ -193,6 +195,7 @@ const parseEvaluatorResponse = (
 
 export interface EvaluateTestsOptions {
   criteria?: readonly GradingCriterion[] | undefined;
+  changedRegions?: ChangeRegion[] | undefined;
   failedTests?: Array<{ name: string; error?: string | undefined; screenshotPath?: string | undefined }> | undefined;
   previousCritique?: string | undefined;
   iteration?: number | undefined;
@@ -204,7 +207,9 @@ export const evaluateTests = async (
   aiConfig: AiConfig,
   options: EvaluateTestsOptions = {},
 ): Promise<EvaluationResult> => {
-  const criteria = options.criteria ?? DEFAULT_CRITERIA;
+  const criteria =
+    options.criteria ??
+    (options.changedRegions ? buildCriteriaForRegions(options.changedRegions) : DEFAULT_CRITERIA);
   const iteration = options.iteration ?? 1;
 
   const prompt = buildEvaluatorPrompt(
