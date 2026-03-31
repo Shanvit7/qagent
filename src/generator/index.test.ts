@@ -15,12 +15,13 @@ const makeAnalysis = (overrides: PartialAnalysis = {}): FileAnalysis => ({
 });
 
 describe("generator prompts", () => {
-  it("describes API routes with UI-first guidance", () => {
+  it("describes API routes with fullstack guidance", () => {
     const { STRATEGY_DEFAULT } = __testables;
     const apiStrategy = STRATEGY_DEFAULT["api-route"];
 
-    expect(apiStrategy).toMatch(/front-end regression/i);
-    expect(apiStrategy).toContain("**Never** use Playwright's request context");
+    expect(apiStrategy).toMatch(/fullstack/i);
+    expect(apiStrategy).toContain("waitForResponse()");
+    expect(apiStrategy).toContain("**Never** use");
     expect(apiStrategy).not.toMatch(/Use `page\.request` to call the endpoint/i);
   });
 
@@ -50,8 +51,9 @@ describe("generator prompts", () => {
       runtimeProbe: undefined,
     });
 
-    expect(prompt).toContain("Front-end regression guard");
-    expect(prompt).toContain("`page.request.*`");
+    expect(prompt).toContain("Network guard");
+    expect(prompt).toContain("page.request.*");
+    expect(prompt).toContain("waitForResponse()");
     expect(prompt).not.toMatch(/Use `page\.request` to call the endpoint/i);
   });
 });

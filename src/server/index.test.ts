@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { detectDevCommand, getAvailablePort } from "./index";
+import { tmpdir } from "node:os";
+import { detectDevCommand, getAvailablePort, loadProjectEnv } from "./index";
 
 const TMP = join(process.cwd(), ".test-server-tmp");
 
@@ -76,6 +77,56 @@ describe("dev server", () => {
       // Not guaranteed but very likely
       expect(typeof p1).toBe("number");
       expect(typeof p2).toBe("number");
+    });
+  });
+
+  describe("loadProjectEnv", () => {
+    it("loads variables from .env file", () => {
+      const tmpDir = join(tmpdir(), `qagent-env-test-${Date.now()}`);
+      mkdirSync(tmpDir, { recursive: true });
+      writeFileSync(join(tmpDir, ".env"), "DB_URL=postgres://localhost\nAPI_KEY=abc123\n");
+      const vars = loadProjectEnv(tmpDir);
+      expect(vars.DB_URL).toBe("postgres://localhost");
+      expect(vars.API_KEY).toBe("abc123");
+      rmSync(tmpDir, { recursive: true });
+    });
+
+    it("strips surrounding quotes from values", () => {
+      const tmpDir = join(tmpdir(), `qagent-env-test-${Date.now()}`);
+      mkdirSync(tmpDir, { recursive: true });
+      writeFileSync(join(tmpDir, ".env"), `SECRET="my secret"\nOTHER='single'\n`);
+      const vars = loadProjectEnv(tmpDir);
+      expect(vars.SECRET).toBe("my secret");
+      expect(vars.OTHER).toBe("single");
+      rmSync(tmpDir, { recursive: true });
+    });
+
+    it("later files override earlier ones", () => {
+      const tmpDir = join(tmpdir(), `qagent-env-test-${Date.now()}`);
+      mkdirSync(tmpDir, { recursive: true });
+      writeFileSync(join(tmpDir, ".env"), "KEY=base\n");
+      writeFileSync(join(tmpDir, ".env.local"), "KEY=local\n");
+      const vars = loadProjectEnv(tmpDir);
+      expect(vars.KEY).toBe("local");
+      rmSync(tmpDir, { recursive: true });
+    });
+
+    it("skips comments and empty lines", () => {
+      const tmpDir = join(tmpdir(), `qagent-env-test-${Date.now()}`);
+      mkdirSync(tmpDir, { recursive: true });
+      writeFileSync(join(tmpDir, ".env"), "# comment\n\nVALID=yes\n");
+      const vars = loadProjectEnv(tmpDir);
+      expect(vars.VALID).toBe("yes");
+      expect(Object.keys(vars)).toHaveLength(1);
+      rmSync(tmpDir, { recursive: true });
+    });
+
+    it("returns empty object when no env files exist", () => {
+      const tmpDir = join(tmpdir(), `qagent-env-test-${Date.now()}`);
+      mkdirSync(tmpDir, { recursive: true });
+      const vars = loadProjectEnv(tmpDir);
+      expect(vars).toEqual({});
+      rmSync(tmpDir, { recursive: true });
     });
   });
 });

@@ -6,6 +6,7 @@
 import { writeFileSync, unlinkSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
+import { loadProjectEnv } from "@/server/index";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -113,8 +114,8 @@ export default defineConfig({
     baseURL: "${serverUrl}",
     screenshot: "only-on-failure",
     trace: "off",
-    actionTimeout: 5_000,
-    navigationTimeout: 10_000,
+    actionTimeout: 10_000,
+    navigationTimeout: 15_000,
   },
   timeout: ${timeout},
   reporter: [["json", { outputFile: "results.json" }]],
@@ -199,6 +200,13 @@ export const parsePlaywrightJson = (raw: string): TestCase[] => {
 
 // ─── Runner ───────────────────────────────────────────────────────────────────
 
+/**
+ * Wrap generated test code with an origin-scoped network guard.
+ *
+ * Allows ALL HTTP methods to the dev server (fullstack testing).
+ * Only blocks off-origin requests to prevent accidental calls to
+ * production APIs, analytics, third-party services, etc.
+ */
 export const wrapWithNetworkGuard = (testCode: string, serverUrl: string): string => {
   let origin = "";
   try { origin = new URL(serverUrl).origin; } catch { origin = ""; }
@@ -206,22 +214,17 @@ export const wrapWithNetworkGuard = (testCode: string, serverUrl: string): strin
   const guardPreamble = `import { test as base, expect } from "@playwright/test";
 
 const ORIGIN = "${origin}";
-const BLOCKED_METHODS = ["POST", "PUT", "PATCH", "DELETE"];
 
 const test = base.extend({
   page: async ({ page }, use) => {
     await page.route("**", async (route) => {
       const req = route.request();
       const url = new URL(req.url());
-      const method = req.method();
 
-      // Block off-origin traffic entirely to avoid accidental prod/3p calls
+      // Block off-origin traffic to avoid accidental prod/3p calls
       if (ORIGIN && url.origin !== ORIGIN) return route.abort();
 
-      // Block mutating requests to avoid backend side-effects
-      if (BLOCKED_METHODS.includes(method)) return route.abort();
-
-      // Allow same-origin GET/HEAD to continue (for render/probe)
+      // Allow all same-origin traffic — fullstack testing
       return route.continue();
     });
 
@@ -269,7 +272,7 @@ export const runPlaywrightTest = (
       "--reporter", "json",
     ], {
       cwd,
-      env: { ...process.env, PLAYWRIGHT_JSON_OUTPUT_NAME: resultsPath },
+      env: { ...process.env, ...loadProjectEnv(cwd), PLAYWRIGHT_JSON_OUTPUT_NAME: resultsPath },
       stdio: ["ignore", "pipe", "pipe"],
     });
 

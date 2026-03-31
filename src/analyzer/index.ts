@@ -33,7 +33,7 @@ export interface FileAnalysis {
    * Playwright test strategy to use for this file.
    * - client-component → interact via clicks/fills
    * - server-component → assert rendered content only
-   * - api-route        → drive the UI that consumes the API (never call page.request)
+   * - api-route        → test through the UI page that consumes this API (fullstack, real server)
    * - server-action    → test via form submission
    * - hook             → test via the page that uses it
    * - utility          → test via observable page behavior

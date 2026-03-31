@@ -10,6 +10,48 @@ import { join } from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
 
+// ─── Env loader ───────────────────────────────────────────────────────────────
+
+/**
+ * Load .env files from the target project directory.
+ * Reads .env, .env.local, .env.development, .env.development.local in
+ * standard priority order (later files override earlier ones).
+ * Returns a flat key-value map. Does NOT set process.env — caller decides.
+ */
+export const loadProjectEnv = (cwd: string): Record<string, string> => {
+  const envFiles = [
+    ".env",
+    ".env.local",
+    ".env.development",
+    ".env.development.local",
+  ];
+
+  const vars: Record<string, string> = {};
+
+  for (const file of envFiles) {
+    const filePath = join(cwd, file);
+    if (!existsSync(filePath)) continue;
+    try {
+      const content = readFileSync(filePath, "utf8");
+      for (const line of content.split("\n")) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) continue;
+        const eqIdx = trimmed.indexOf("=");
+        if (eqIdx < 1) continue;
+        const key = trimmed.slice(0, eqIdx).trim();
+        const raw = trimmed.slice(eqIdx + 1).trim();
+        // Strip surrounding quotes
+        const val = raw.replace(/^["']|["']$/g, "");
+        vars[key] = val;
+      }
+    } catch {
+      // Skip unreadable files
+    }
+  }
+
+  return vars;
+};
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface ServerHandle {
@@ -114,8 +156,9 @@ export const startServer = async (
   const port = options.port ?? await getAvailablePort();
   const readyTimeout = options.readyTimeout ?? 30_000;
 
-  // Inject PORT env var (works for Next.js, Vite, CRA)
-  const env = { ...process.env, PORT: String(port) };
+  // Load target project's .env files and inject PORT
+  const projectEnv = loadProjectEnv(cwd);
+  const env = { ...process.env, ...projectEnv, PORT: String(port) };
 
   const [cmd, ...args] = command.split(" ");
   if (!cmd) throw new Error(`Invalid dev command: ${command}`);

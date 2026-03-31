@@ -258,8 +258,8 @@ describe("evaluator", () => {
         iteration: 1,
       });
 
-      expect(prompt).toContain("Remove direct server/API requests");
-      expect(prompt).toContain("Do not move on until every server call is deleted");
+      expect(prompt).toContain("Replace page.request with UI-driven flow");
+      expect(prompt).toContain("Replace every page.request call");
     });
 
   });

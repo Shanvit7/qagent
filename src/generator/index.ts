@@ -88,36 +88,47 @@ page.on("console", m => { if (m.type() === "error") errors.push(m.text()); });
 expect(errors.filter(e => e.includes("Hydration"))).toHaveLength(0);
 \`\`\``,
 
-  "api-route": `**Strategy: API route (front-end regression)**
-These files power the UI, but qagent NEVER hits endpoints directly.
-- Navigate to the route(s) listed above that consume this API
-- Trigger the UI that would call the API (click "Refresh", search, filter, etc.)
-- Assert what the user sees before and after the interaction: skeletons, empty states, hydrated data
-- Simulate failures by asserting fallback copy or inline errors that already render client-side
-- **Never** use Playwright's request context, custom fetch helpers, or \`page.request.*\`
+  "api-route": `**Strategy: API route (fullstack)**
+The dev server is running with the project's real env vars. API routes work end-to-end.
+- Navigate to the page that consumes this API
+- Trigger the UI that calls the API (click buttons, submit forms, filter, etc.)
+- Use \`waitForResponse()\` to wait for the API call to complete before asserting
+- Assert the real server response rendered in the DOM: data tables, success messages, loaded content
+- Also test error states: invalid input → server validation error displayed in UI
+- **Never** use \`page.request.*\` or APIRequestContext — always drive through the browser UI
 \`\`\`ts
 await page.goto("/dashboard");
 await expect(page.getByRole("heading", { name: "Billing" })).toBeVisible();
-await page.getByRole("button", { name: "Refresh invoices" }).click();
+const [response] = await Promise.all([
+  page.waitForResponse(resp => resp.url().includes("/api/invoices") && resp.status() === 200),
+  page.getByRole("button", { name: "Refresh invoices" }).click(),
+]);
 await expect(page.getByRole("row", { name: /invoice #/i })).toBeVisible();
 \`\`\``,
 
-  "server-action": `**Strategy: Server action**
-Writes are blocked by the network guard. Test ONLY client-side behavior: validation, field states, error boundaries.
+  "server-action": `**Strategy: Server action (fullstack)**
+The dev server runs with real env vars — server actions execute end-to-end.
+- Test the full form lifecycle: validation errors → valid submission → server response
+- Use \`waitForResponse()\` or \`waitForURL()\` to wait for the server action to complete
+- Assert both client-side validation AND server-side success/error states
 \`\`\`ts
 await page.goto("/route-with-form");
 await page.waitForLoadState("domcontentloaded");
 
-// Test 1: required-field validation — submit empty form, assert client message
+// Test 1: client-side validation — submit empty, assert error
 await page.getByRole("button", { name: /submit/i }).click();
 await expect(page.getByText(/required|please fill|cannot be empty/i)).toBeVisible();
 
-// Test 2: inline field validation — fill invalid value, assert error
-await page.getByLabel(/email/i).fill("not-an-email");
-await page.getByRole("button", { name: /submit/i }).click();
-await expect(page.getByText(/invalid email|valid email/i)).toBeVisible();
-\`\`\`
-DO NOT assert success messages, "Thank you", "Submitted", redirects, or any text that requires a server reply.`,
+// Test 2: full submit — fill valid data, submit, assert server response
+await page.getByLabel(/name/i).fill("Jane Doe");
+await page.getByLabel(/email/i).fill("jane@example.com");
+const [response] = await Promise.all([
+  page.waitForResponse(resp => resp.url().includes("/api/") && resp.ok()),
+  page.getByRole("button", { name: /submit/i }).click(),
+]);
+// Assert the server's success response rendered in DOM
+await expect(page.getByText(/thank you|success|submitted/i)).toBeVisible();
+\`\`\``,
 
   "hook": `**Strategy: Custom hook**
 Hooks have no UI — test through the page that uses them. Find the route that renders a component using this hook.
@@ -213,17 +224,19 @@ Never use \`.locator('tag.tw-class/opacity')\`. Use \`getByRole\`, \`getByText\`
 - \`<header>\` → role "banner" only when direct child of \`<body>\`. Otherwise \`page.locator("header").first()\`
 - \`<nav aria-label="X">\` → \`page.getByRole("navigation", { name: "X" })\``;
 
-const NETWORK_GUARD_BLOCK = `## Front-end regression guard — ALWAYS active
-qagent validates DOM and interaction regressions only. Network writes and Playwright's request context are blocked.
+const NETWORK_GUARD_BLOCK = `## Network guard — origin-scoped
+qagent runs a real dev server with the project's environment variables loaded.
+All same-origin requests (GET, POST, PUT, etc.) go through to the real backend.
+Off-origin requests (analytics, third-party APIs) are blocked.
 
 Rules:
-- NEVER use \`page.request.*\`, custom fetch helpers, or APIRequestContext — stay inside the browser page
-- POST, PUT, PATCH, DELETE are blocked — the server never receives or replies to them
-- NEVER assert success messages, confirmation text, or redirects after a form submit or mutating click
-- NEVER use \`waitForResponse()\`, \`waitForRequest()\`, or \`waitForNavigation()\` tied to a mutation
-- DO assert client-side validation, inline errors, disabled/loading states, or unchanged forms
-- Focus on what the user sees before and after the interaction — that's the regression surface
-- Any assertion that depends on a backend reply will time out — remove it
+- Test the FULL user flow: fill forms, submit, and assert the real server response
+- Use \`waitForResponse()\` or \`waitForURL()\` when you need to wait for a server round-trip
+- If a mutation changes the URL (redirect after login/signup), assert the new URL
+- If a mutation shows a success message from the server, assert it
+- Timeouts on server responses usually mean the route handler needs env vars — check that the test environment is configured
+- NEVER use \`page.request.*\` or APIRequestContext — always drive through the UI
+- Off-origin requests are blocked — do not assert third-party API calls
 `;
 
 // Maps classifier regions to plain-English test focus hints.

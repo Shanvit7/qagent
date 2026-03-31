@@ -33,7 +33,9 @@ export const HARD_RULES = `## Hard rules — non-negotiable
 - Never invent selectors: no \`.my-class\`, no \`#some-id\`, no guessed aria-labels
 - Query hierarchy: \`getByRole\` → \`getByLabel\` → \`getByText\` → \`page.locator("tag")\`
 - \`waitForLoadState("domcontentloaded")\` after navigation — NOT "networkidle"
-- NO vi.mock(), NO jest.mock(), NO mocks, NO jsdom, NO @testing-library, NO \`page.request.*\`, NO APIRequestContext
+- NO vi.mock(), NO jest.mock(), NO mocks, NO jsdom, NO @testing-library
+- NEVER use \`page.request.*\` or APIRequestContext — always drive through the browser UI
+- Use \`waitForResponse()\` or \`waitForURL()\` when waiting for server round-trips after form submits or mutations
 - **Locators that match by name/label become stale after interactions that change that name/label.**
   If you click a button \`{ name: "Open menu" }\` and it changes to \`"Close menu"\`, the original locator
   no longer matches. Use a STABLE locator for toggle elements — e.g. a CSS selector on an attribute
@@ -44,12 +46,9 @@ export const HARD_RULES = `## Hard rules — non-negotiable
   \`page.locator("header").first()\`  — when there are two
   \`page.locator("nav").filter({ hasText: /about/i })\`  — filter by content
   \`page.getByRole("img", { name: /logo/i }).first()\`  — first matching
-- **Network guard is ALWAYS active — POST/PUT/PATCH/DELETE are blocked and will never complete:**
-  NEVER assert success messages, confirmation text, redirects, or any outcome that requires a server response
-  after a form submission or mutating action. The request is aborted — the server never replies.
-  ✅ DO assert: validation messages ("required", "invalid email"), disabled/loading button states,
-     error boundaries ("Something went wrong"), or the form's pre-submission state.
-  ❌ NEVER assert: "Thank you", "Submitted", "Success", URL redirects, or any post-write UI state.`;
+- **The dev server is running with the project's real .env — API routes, server actions, and DB queries work end-to-end.**
+  Test the full user flow: submit forms, assert success/error messages from the server, verify redirects.
+  If a response times out, the route handler likely needs an env var (DB_URL, API_KEY, etc.) that isn't configured.`;
 
 const SERVER_CALL_REGEX = /\b(?:page|context)\.request\b|\bAPIRequestContext\b/i;
 
@@ -278,21 +277,22 @@ export const buildRefinementPrompt = (ctx: RefinementContext): string => {
   const usesServerRequests = SERVER_CALL_REGEX.test(ctx.testCode);
   if (usesServerRequests) {
     sections.push(
-      "## Remove direct server/API requests",
-      "These tests call page.request.* or APIRequestContext. qagent only validates DOM-level regressions.",
-      "Replace every direct HTTP request with the real user flow: click the buttons, fill the inputs, and assert DOM changes.",
+      "## Replace page.request with UI-driven flow",
+      "These tests use page.request.* or APIRequestContext directly. Always drive through the browser UI instead.",
+      "The dev server is running with real env vars — server-side code works. But test through the page, not raw HTTP.",
       "Example:",
       "```ts",
-      "// ❌ Bad",
+      "// ❌ Bad — bypasses the UI",
       'const res = await page.request.get("/api/data");',
       "expect(res.status()).toBe(200);",
       "",
-      "// ✅ Good",
+      "// ✅ Good — tests through the real UI",
       'await page.goto("/dashboard");',
       'await page.getByRole("button", { name: /refresh/i }).click();',
+      "await page.waitForResponse(resp => resp.url().includes('/api/data') && resp.ok());",
       'await expect(page.getByRole("row", { name: /invoice/i })).toBeVisible();',
       "```",
-      "Do not move on until every server call is deleted.",
+      "Replace every page.request call with the equivalent UI interaction.",
       "",
     );
   }
