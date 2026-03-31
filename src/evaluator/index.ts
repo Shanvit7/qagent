@@ -28,23 +28,22 @@ export const HARD_RULES = `## Hard rules — non-negotiable
 - Playwright only: \`import { test, expect } from "@playwright/test"\`
 - Every \`test()\` must call \`page.goto(route)\` — use the route provided
 - **Every action must be followed by an assertion of its OUTCOME** — not just re-checking the same element
-- **Selectors come from the source code** — read the JSX, use exact aria-labels, roles, and text
+- **Selectors come from the live probe snapshot and source code** — use the exact roles, names, and labels shown
+- When a live probe snapshot is provided, treat it as the source of truth for what exists at each viewport
 - Never invent selectors: no \`.my-class\`, no \`#some-id\`, no guessed aria-labels
 - Query hierarchy: \`getByRole\` → \`getByLabel\` → \`getByText\` → \`page.locator("tag")\`
-- For CSS-transform animations (framer-motion): use \`boundingBox()\` not \`toBeVisible()\`
 - \`waitForLoadState("domcontentloaded")\` after navigation — NOT "networkidle"
 - NO vi.mock(), NO jest.mock(), NO mocks, NO jsdom, NO @testing-library
-- **Read the source for visibility signals before asserting hidden/visible state** —
-  check HOW the element is hidden: CSS class? attribute? transform? Use the right assertion for each.
-- **Responsive elements** — if the source has breakpoint classes (md:hidden, lg:flex etc.),
-  set the correct viewport BEFORE \`page.goto()\`. Read the source to know which breakpoint applies.
+- **Locators that match by name/label become stale after interactions that change that name/label.**
+  If you click a button \`{ name: "Open menu" }\` and it changes to \`"Close menu"\`, the original locator
+  no longer matches. Use a STABLE locator for toggle elements — e.g. a CSS selector on an attribute
+  that doesn't change: \`page.locator('button[aria-label]').first()\`, or re-query after the interaction:
+  \`const closeBtn = page.getByRole("button", { name: "Close menu" })\`
 - **Strict mode — NEVER let a locator match more than one element:**
-  Responsive layouts often have duplicate elements (two \`<header>\`, two nav menus, two logos — one desktop, one mobile).
-  If your locator could match multiple, scope it to the visible one:
-  \`page.locator("header").first()\`  — when there are two headers
+  If your locator could match multiple elements, scope it:
+  \`page.locator("header").first()\`  — when there are two
   \`page.locator("nav").filter({ hasText: /about/i })\`  — filter by content
-  \`page.getByRole("img", { name: /logo/i }).first()\`  — first matching image
-  Rule: if the JSX has a desktop AND mobile version of a component, always use \`.first()\` or a visibility filter`;
+  \`page.getByRole("img", { name: /logo/i }).first()\`  — first matching`;
 
 // ─── Evaluator prompt ─────────────────────────────────────────────────────────
 
@@ -268,7 +267,6 @@ export const buildRefinementPrompt = (ctx: RefinementContext): string => {
       const msg = t.error?.slice(0, 600) ?? "unknown error";
       const isStrictMode   = msg.includes("strict mode violation") || msg.includes("resolved to");
       const isTimeout      = msg.includes("TimeoutError") || msg.includes("waiting for");
-      const isTransform    = msg.includes("Expected") && msg.includes("to be visible") && !isStrictMode;
 
       // Extract what the locator was, e.g. "locator('header') resolved to 2 elements"
       const strictMatch = msg.match(/locator\(([^)]+)\)\s+resolved to (\d+) elements/);
@@ -290,19 +288,32 @@ export const buildRefinementPrompt = (ctx: RefinementContext): string => {
           "",
         );
       } else if (isTimeout) {
-        sections.push(
-          `**Fix — selector not found or element not visible:**`,
-          `1. Re-read the source code above and find the exact aria-label, role, or text content`,
-          `2. Check the route — does \`${ctx.route}\` actually render this component?`,
-          `3. If the element appears after interaction, add a \`waitFor\` before the assertion`,
-          "",
-        );
-      } else if (isTransform) {
-        sections.push(
-          `**Fix — element may be off-screen (CSS transform / framer-motion):**`,
-          `Replace \`toBeVisible()\` with \`boundingBox()\` to check position instead of visibility`,
-          "",
-        );
+        // Check if this looks like a stale locator after toggle (common pattern)
+        const isToggleStale = msg.includes("toHaveAttribute") && (msg.includes("aria-label") || msg.includes("aria-expanded"));
+        if (isToggleStale) {
+          sections.push(
+            `**Fix — stale locator after toggle interaction:**`,
+            `Your locator matches by name/label (e.g. \`{ name: "Open menu" }\`). After clicking, the label changes`,
+            `to "Close menu" — the original locator no longer finds any element, so the assertion times out.`,
+            `Fix: re-query with the NEW name after the click:`,
+            `\`\`\``,
+            `await page.getByRole("button", { name: "Open menu" }).click();`,
+            `const closeBtn = page.getByRole("button", { name: "Close menu" });`,
+            `await expect(closeBtn).toHaveAttribute("aria-label", "Close menu");`,
+            `\`\`\``,
+            "",
+          );
+        } else {
+          sections.push(
+            `**Fix — selector not found or element not visible:**`,
+            `1. Check the live probe snapshot (if provided) — is this element listed at this viewport?`,
+            `2. Re-read the source code above and find the exact aria-label, role, or text content`,
+            `3. Check the route — does \`${ctx.route}\` actually render this component?`,
+            `4. If the element only exists at a certain viewport, call \`page.setViewportSize()\` BEFORE \`page.goto()\``,
+            `5. If the element appears after interaction, add a \`waitFor\` before the assertion`,
+            "",
+          );
+        }
       } else {
         sections.push(
           `**Fix:**`,

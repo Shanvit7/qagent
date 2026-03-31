@@ -30,7 +30,7 @@ export interface ResolvedImport {
   hasUseServer: boolean;
   /** Source excerpt (first 40 lines) — present for all resolved local modules */
   sourceExcerpt: string | null;
-  /** Named imports used by the consuming file: e.g. ["motion", "useScroll"] */
+  /** Named imports used by the consuming file: e.g. ["useState", "useEffect"] */
   importedNames: string[];
   /** Whether the import includes a default import binding */
   hasDefaultImport: boolean;

@@ -1,6 +1,6 @@
 # Architecture
 
-qagent generates and runs **Playwright browser tests** against a live dev server. It uses a GAN-inspired loop: an AI **Generator** writes tests, a real browser provides ground truth, and an AI **Evaluator** grades and feeds critique back for refinement.
+qagent generates **minimal behavioral regression tests** for staged component changes and runs them in a real browser. The core question it answers: *can users still complete the flows this component enables, after this change?*
 
 ---
 
@@ -10,38 +10,79 @@ qagent generates and runs **Playwright browser tests** against a live dev server
 git add .
     │
     ▼
-preflight ── model configured? API key? Chromium installed?
+classify ── AST diff analysis (no AI cost)
+            SKIP / LIGHTWEIGHT / FULL_QA
     │
     ▼
-classify ── AST-based: SKIP / LIGHTWEIGHT / FULL_QA (no AI cost)
-    │
-    ▼
-route map ── reverse import graph: component → pages (max 3 routes)
+route map ── reverse import graph: component → pages that render it
     │
     ▼
 dev server ── auto-detected (Next.js / Vite / CRA), kept warm
     │
     ▼
-┌─────────────── GAN Loop (per file, max N iterations) ───────────────┐
-│                                                                      │
-│  generate ── AI writes Playwright tests from source + context        │
-│      │                                                               │
-│      ▼                                                               │
-│  run ── real Chromium, real page loads, real clicks                   │
-│      │                                                               │
-│      ▼                                                               │
-│  evaluate ── AI grades on 5 weighted criteria + diagnoses failures   │
-│      │                                                               │
-│      ▼                                                               │
-│  refine ── critique + runtime errors → targeted fix prompt           │
-│      │                                                               │
-│      └──→ loop until pass or budget exhausted (track best score)     │
-│                                                                      │
-└──────────────────────────────────────────────────────────────────────┘
+probe ── real Chromium navigates to the route at desktop + mobile viewports
+         captures: accessible elements, interaction outcomes (before/after state
+         on toggle buttons), hidden/inaccessible elements, console errors
+         → ground truth fed directly into the generation prompt
     │
     ▼
-report ── terminal tree + markdown + failure persistence
+┌─────────── Generator–Evaluator Loop (per file) ─────────────────────┐
+│                                                                       │
+│  generate ── AI writes behavioral tests from probe snapshot + source  │
+│      │       framed as user goals, not component inspection           │
+│      ▼                                                                │
+│  run ── real Chromium executes the tests                              │
+│      │                                                                │
+│      ▼                                                                │
+│  evaluate ── AI grades on behavioral coverage criteria                │
+│      │       diagnoses selector issues, timing, real bugs             │
+│      ▼                                                                │
+│  refine ── targeted fix prompt with exact error + probe context       │
+│      │                                                                │
+│      └──→ loop until pass or budget exhausted (track best score)      │
+│                                                                       │
+└───────────────────────────────────────────────────────────────────────┘
+    │
+    ▼
+report ── terminal tree + markdown + screenshot on failure
 ```
+
+---
+
+## The Probe
+
+The probe is the most important part of the pipeline. It runs before any AI call.
+
+**Problem it solves:** Static analysis of component source can't reliably determine what's accessible and interactive in a running app. CSS-in-JS, animation libraries, responsive breakpoints, portals, server-rendered conditionals — every project does visibility differently. Any static heuristic breaks on projects that use different patterns.
+
+**What the probe does:**
+1. Opens real Chromium at the target route
+2. Navigates at both desktop (1280×800) and mobile (390×844) viewports
+3. Captures the **accessibility tree** — what's actually reachable by role and name
+4. For toggle-like buttons (menus, accordions, expanders), clicks them and captures **before/after state** — the name and attributes before and after the click
+5. Records elements in the DOM that are NOT accessible (inert, aria-hidden)
+6. Records console errors on load
+
+The probe output tells the AI exactly:
+- Which `getByRole` locator to use at which viewport
+- That after clicking "Open menu", the button becomes "Close menu" — so re-query with the new name (no stale locator bugs)
+- Which elements exist at desktop but not mobile (and therefore require `setViewportSize` before `goto`)
+
+**Fallback:** If the probe fails (server unreachable, page error, timeout), generation continues with source-only context. No test run is skipped.
+
+---
+
+## Behavioral Framing
+
+Tests are framed as user goals, not component inspection:
+
+| ❌ Component inspection (old) | ✅ Behavioral regression (new) |
+|---|---|
+| `expect(btn).toHaveAttribute("aria-expanded", "true")` | `expect(closeMenuButton).toBeVisible()` |
+| `expect(btn).toHaveClass(/md:hidden .../)` | `await closeMenuButton.click(); expect(openMenuButton).toBeVisible()` |
+| `expect(nav).toHaveAttribute("aria-hidden", "true")` | `expect(page).toHaveURL("/about")` |
+
+A failing behavioral test means a user flow is broken. A failing attribute test means an implementation detail changed. Only the first is signal worth blocking on.
 
 ---
 
@@ -50,111 +91,134 @@ report ── terminal tree + markdown + failure persistence
 ```
 src/
 ├── cli/
-│   ├── index.ts              # Entry point (shebang + argv)
+│   ├── index.ts              # Entry point
 │   ├── program.ts            # Commander subcommand registration
 │   └── commands/
-│       ├── init.ts            # Setup wizard (install, provider, Chromium, lenses, run mode, skill)
-│       ├── run.ts             # Core pipeline — preflight → classify → generate → GAN loop → report
-│       ├── watch.ts           # Stage-based CI — watches .git/index, warm server + route map
-│       ├── explain.ts         # AI explains last failure
-│       ├── lens.ts            # Interactive lens selection
-│       ├── models.ts          # Interactive provider + model selection
-│       ├── skill.ts           # Create skill file + print IDE prompt
-│       └── status.ts          # Provider connection + config summary
-├── agent/
-│   └── security.ts            # Security analysis agent (grep + read_file tools, 6 calls max)
+│       ├── init.ts           # Setup wizard
+│       ├── run.ts            # Core pipeline: classify → probe → generate → loop → report
+│       ├── watch.ts          # Background CI: watches .git/index for stage events
+│       ├── explain.ts        # AI explains last failure
+│       ├── lens.ts           # Lens configuration
+│       ├── models.ts         # Provider + model selection
+│       ├── skill.ts          # Skill file creation + IDE prompt
+│       └── status.ts         # Config + provider health
+├── probe/
+│   └── index.ts              # Runtime probe: real browser → a11y tree + interaction outcomes
+│                             # probeRoute() + formatProbeForPrompt()
 ├── analyzer/
-│   └── index.ts               # ts-morph AST → component type, props, security findings
+│   └── index.ts              # Component type, props, security findings from source
 ├── classifier/
-│   └── index.ts               # Rule-based change classification (SKIP/LIGHTWEIGHT/FULL_QA)
-├── config/
-│   ├── types.ts               # QAgentConfig, AiConfig, PlaywrightConfig, QaLens
-│   └── loader.ts              # Merge ~/.qagentrc + .qagent/config.json + skill file
-├── context/
-│   └── index.ts               # Per-file import graph (2 levels deep) → narrative summary
-├── evaluator/
-│   ├── criteria.ts            # 5 weighted grading criteria (page-loads, interactions, content, console, responsive)
-│   └── index.ts               # AI grader + refinement prompt builder
-├── feedback/
-│   └── index.ts               # Cross-run failure persistence (auto-clears on pass)
+│   └── index.ts              # AST diff → SKIP / LIGHTWEIGHT / FULL_QA + changed regions
 ├── generator/
-│   └── index.ts               # Prompt builder + AI call → Playwright test code
-├── git/
-│   ├── staged.ts              # Read staged files + diffs via simple-git
-│   └── hook.ts                # (internal) git hook utilities — not wired into CLI
-├── preflight/
-│   └── index.ts               # Pre-run checks: model, API key, Ollama, Chromium
-├── providers/
-│   └── index.ts               # Unified AI: Ollama, OpenAI, Anthropic (generate + chat + tools)
-├── reporter/
-│   └── index.ts               # Terminal tree renderer + markdown report writer
-├── routes/
-│   └── index.ts               # Reverse import graph → component-to-route mapping
+│   └── index.ts              # Builds generation prompt (source + probe) → AI → test code
+├── evaluator/
+│   ├── criteria.ts           # Weighted grading criteria (behavioral focus)
+│   └── index.ts              # AI grader + refinement prompt builder
 ├── runner/
-│   └── index.ts               # Spawn `npx playwright test`, parse JSON results, browser detection
-├── scanner/
-│   └── index.ts               # Project scan: router type, custom hooks
+│   └── index.ts              # Spawns Playwright, parses JSON results, browser detection
+├── routes/
+│   └── index.ts              # Reverse import graph: component → routes
 ├── server/
-│   └── index.ts               # Auto-detect + start dev server, health polling
-├── setup/
-│   └── providers.ts           # Interactive provider + model wizard
+│   └── index.ts              # Dev server lifecycle: auto-detect, start, health poll
+├── context/
+│   └── index.ts              # Per-file import graph for prompt context
+├── scanner/
+│   └── index.ts              # Project scan: router type, structure detection
+├── agent/
+│   └── security.ts           # Security analysis (grep + read_file tool calls)
+├── feedback/
+│   └── index.ts              # Cross-run failure persistence (clears on pass)
+├── preflight/
+│   └── index.ts              # Pre-run checks: model, API key, Chromium
+├── providers/
+│   └── index.ts              # Unified AI: Ollama, OpenAI, Anthropic
+├── reporter/
+│   └── index.ts              # Terminal tree + markdown report
+├── config/
+│   ├── types.ts              # QAgentConfig, AiConfig, QaLens
+│   └── loader.ts             # Merge ~/.qagentrc + .qagent/config.json + skill file
 ├── skill/
-│   └── template.ts            # Playwright-oriented skill file template + IDE prompt
+│   └── template.ts           # Skill file template + IDE prompt
 └── utils/
-    ├── packageManager.ts      # Detect PM by lockfile, run PM commands
-    └── prompt.ts              # Interactive prompts (clack wrappers)
+    ├── packageManager.ts     # Detect PM by lockfile
+    └── prompt.ts             # Interactive prompt helpers
 ```
 
 ---
 
-## The GAN Loop
+## Generator–Evaluator Loop
 
 | Role | Module | What it does |
 |------|--------|-------------|
-| **Generator** | `generator/index.ts` | AI writes Playwright test code from source + context |
-| **Environment** | `runner/index.ts` | Runs tests in real Chromium — pass/fail/timeout ground truth |
-| **Evaluator** | `evaluator/index.ts` | AI grades tests on 5 weighted criteria, produces critique |
-| **Refinement** | `evaluator/buildRefinementPrompt()` | Combines critique + runtime errors → targeted fix prompt |
+| **Probe** | `probe/index.ts` | Real browser → live a11y + interaction ground truth |
+| **Generator** | `generator/index.ts` | AI writes behavioral tests from probe + source |
+| **Runner** | `runner/index.ts` | Executes in real Chromium — pass/fail/timeout |
+| **Evaluator** | `evaluator/index.ts` | Grades behavioral coverage, diagnoses failures |
+| **Refinement** | `evaluator/buildRefinementPrompt()` | Targeted fix with runtime error + probe context |
 
-Dual feedback is the key: runtime catches wrong selectors, AI catches missing coverage.
+---
+
+## Classifier
+
+The classifier reads the AST diff and outputs SKIP / LIGHTWEIGHT / FULL_QA before any AI call:
+
+| Change type | Decision | Rationale |
+|-------------|----------|-----------|
+| CSS/Tailwind classes only | **SKIP** | Cosmetic — no behavioral change possible |
+| Import reorder | **SKIP** | No runtime effect |
+| Prop or type change | **LIGHTWEIGHT** | 1 smoke test — verify the component still renders |
+| JSX markup change | **LIGHTWEIGHT** | Minor structural change |
+| Function body, hooks, state | **FULL_QA** | Logic changed — full behavioral probe needed |
+| Server action | **FULL_QA** + security | Form submission path changed |
+
+Changed regions are passed to the generator to scope tests to the actual change.
+
+---
+
+## Route Mapping
+
+```
+changed file: src/components/layout/site-header.tsx
+                        ↓
+reverse import graph traversal
+                        ↓
+layout component → test at "/" only (not every page)
+                        ↓
+playwright: page.goto("/") → assert header behavior
+```
+
+- Built once on watch start (1–3s), O(1) lookup per file
+- Layout components resolve to `/` to avoid testing every route
+- Parallel slots (`@header`, `@footer`) resolve to parent route
+- Capped at 3 routes per component
 
 ---
 
 ## AI Providers
 
-`src/providers/index.ts` — unified interface, no SDK deps for cloud (raw fetch).
+`src/providers/index.ts` — unified interface, raw fetch (no SDK dependencies for cloud).
 
-| Provider | Auth | Generate | Chat (tools) |
-|----------|------|----------|-------------|
-| Ollama | None (local) | `ollama.generate()` | `ollama.chat()` |
-| OpenAI | `OPENAI_API_KEY` | `/v1/chat/completions` | with tools |
-| Anthropic | `ANTHROPIC_API_KEY` | `/v1/messages` | with tools |
+| Provider | Auth | Notes |
+|----------|------|-------|
+| Ollama | None | Local, free, private — `qwen2.5-coder:14b` recommended |
+| OpenAI | `OPENAI_API_KEY` | `gpt-4o` default |
+| Anthropic | `ANTHROPIC_API_KEY` | `claude-3-5-sonnet` default |
 
-API keys loaded from: shell env → `.env` / `.env.local` / `.env.development*`.
-Provider + model stored in `~/.qagentrc`.
-
----
-
-## Config
-
-```
-~/.qagentrc                  ← provider=, model=
-.qagent/config.json          ← lenses, skipTrivial, timeout
-qagent-skill.md              ← project context injected into every prompt
-```
+Keys loaded from: shell env → `.env` / `.env.local` / `.env.development*`.
 
 ---
 
 ## Key Design Decisions
 
-- **Real browser only** — no mocks, no jsdom, no import resolution tricks. Tests run against a live dev server in Chromium.
-- **Route mapping via reverse import graph** — connects "component changed" → "pages to test". Built once, O(1) lookup.
-- **Parallel route slots** (`@header`, `@sidebar`) resolve to `/` — not independently navigable.
-- **Layout components** test against `/` only — avoids testing every page for a shared header change.
-- **Stage-based CI** (primary UX) — `qagent watch` polls `.git/index` for stage events and runs Playwright tests in the background. Developer keeps working; results surface in the terminal when ready. `qagent run` is the manual alternative — both operate purely on staged files, no commits involved.
-- **Preflight checks** — interactive prompts to install Chromium, configure model, set API key before first run.
-- **Failure feedback** — cross-run persistence means the AI retests previously-broken scenarios.
-- **Selector derivation** — prompt instructs AI to read aria-labels/text from source code, not guess. `boundingBox()` for CSS-transform visibility (framer-motion).
+**Runtime-first, not source-first.** The probe navigates the real page before generation. The AI receives what's actually accessible in the browser, not what source analysis infers might be there. This makes the system framework-agnostic — it doesn't care how elements are hidden or animated.
+
+**Behavioral not structural.** Tests answer "can users do X?" not "does attribute Y equal Z?". Structural tests break on cosmetic refactors. Behavioral tests only fail when real functionality breaks.
+
+**Interaction outcomes eliminate stale locators.** For toggle elements, the probe clicks them in a fresh context and records what changes. The generator receives explicit before/after state: "Open menu → click → becomes Close menu". No inference needed, no stale locator possible.
+
+**Stage-based, not commit-based.** qagent runs on `git add` (staged changes), not on commit. Developers get feedback before they commit, with no blocking.
+
+**Graceful degradation.** Probe fails → source-only generation. AI unavailable → skip file, report. Browser missing → prompt to install. Nothing hard-fails silently.
 
 ---
 
@@ -162,10 +226,10 @@ qagent-skill.md              ← project context injected into every prompt
 
 | Package | Purpose |
 |---------|---------|
-| `@clack/prompts` | Interactive terminal UI |
-| `commander` | CLI argument parsing |
-| `ollama` | Ollama SDK for local AI |
-| `picocolors` | Terminal colors |
 | `playwright` | Browser automation + test runner |
+| `@clack/prompts` | Terminal UI |
+| `commander` | CLI argument parsing |
+| `ollama` | Ollama SDK |
+| `picocolors` | Terminal colors |
 | `simple-git` | Git operations |
-| `ts-morph` | TypeScript AST analysis |
+| `ts-morph` | TypeScript AST for classifier |

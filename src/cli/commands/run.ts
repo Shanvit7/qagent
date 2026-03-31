@@ -23,6 +23,7 @@ import { scanProject, writeScanCache, scanToMarkdown } from "@/scanner/index";
 import { buildFileContext } from "@/context/index";
 import { buildRouteMap, findRoutesForFile, type RouteMap } from "@/routes/index";
 import { startServer, type ServerHandle } from "@/server/index";
+import { probeRoute } from "@/probe/index";
 import {
   renderFileReport,
   writeRunReport,
@@ -83,6 +84,19 @@ const processFile = async (
 
   p.log.message(color.dim(`  Routes: ${routes.join(", ")}`));
 
+  // -- Probe: navigate to route in real browser, capture live ground truth --
+  const probeSpinner = p.spinner();
+  probeSpinner.start(`Probing ${routes[0] ?? "/"} for live selectors`);
+  const runtimeProbe = await probeRoute(routes[0] ?? "/", serverUrl, cwd);
+  if (runtimeProbe.success) {
+    const elementCount = runtimeProbe.snapshots.reduce(
+      (n, s) => n + s.interactiveElements.length, 0,
+    );
+    probeSpinner.stop(color.dim(`  Live snapshot: ${elementCount} interactive elements across ${runtimeProbe.snapshots.length} viewports`));
+  } else {
+    probeSpinner.stop(color.yellow(`  Probe skipped (${runtimeProbe.error ?? "unavailable"}) — falling back to source-only`));
+  }
+
   // -- Generate tests --
   const s = p.spinner();
   s.start(`Generating Playwright tests via ${config.ai.model}`);
@@ -96,6 +110,7 @@ const processFile = async (
       classificationAction: classification.action,
       classificationReason: classification.reason,
       changedRegions: classification.changedRegions,
+      runtimeProbe: runtimeProbe.success ? runtimeProbe : undefined,
     };
 
     const beforeGen = getSessionUsage();

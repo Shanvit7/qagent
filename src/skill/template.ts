@@ -9,18 +9,27 @@
 // ─── IDE prompt ──────────────────────────────────────────────────────────────
 
 export const IDE_PROMPT = `You need to edit the file qagent-skill.md in this project's root.
-This is a REQUIRED step before any tests can be generated — qagent will not produce
-working tests without it.
 
-qagent is an AI test generator that writes **Playwright browser tests** — real browser,
-real navigation, real clicks. It tests your running app by navigating to routes, interacting
-with the page, and asserting what a user would see. It has ZERO project-wide context on
-its own — the only way it understands your routes, flows, auth, and UI patterns is through
-this skill file.
+qagent generates **behavioral regression tests** — real Playwright tests that verify
+user flows still work after a component change. Before generating tests, it probes the
+live app in a real browser to learn what's actually interactive at each viewport.
 
-Your job: explore this codebase deeply, then fill in every section of qagent-skill.md
-with real information from this project. The file already has section headings — read them,
-explore the codebase, and replace the descriptions with actual content.
+The skill file gives qagent the project context it can't discover from the browser alone:
+which routes exist, what user flows matter, how auth works, what forms do, how navigation
+is structured. Without it, the AI generates tests for the wrong routes with wrong assumptions.
+With it, tests land on the correct flows on the first try.
+
+Your job: explore this codebase and fill in every section of qagent-skill.md with real,
+accurate information. The quality of the generated tests depends directly on this file.
+
+## What qagent needs most
+
+1. **Routes** — every URL and what it renders. Playwright needs to navigate somewhere.
+2. **User flows** — the sequences a user follows (open menu, fill form, click link, see result).
+   These become the behavioral tests: "user can do X" not "component has attribute Y".
+3. **Auth** — which routes are protected, how to authenticate in a test (if at all).
+4. **Interactive patterns** — forms, modals, toggles, dropdowns and how they behave.
+5. **Responsive behavior** — what changes at mobile vs desktop (navigation, layouts).
 
 ## How to explore
 
@@ -54,44 +63,33 @@ Do not skim. Explore methodically:
    - Are there loading skeletons, spinners, or suspense boundaries?
    - What do empty states look like? (no items, no search results)
    - What do error states look like? (API failure, 404, permission denied)
-   - How long does data typically take to load?
 
 7. **Interactive patterns** — find every interaction type in the app:
    - Forms: what library (React Hook Form, Formik, native)? What validation (Zod, Yup)?
    - Modals/dialogs: how are they triggered? How are they dismissed?
    - Dropdowns/selects: native or custom (Radix, Headless UI, shadcn)?
    - Toasts/notifications: what triggers them? Where do they appear?
-   - Drag & drop, file upload, infinite scroll, etc.
 
 8. **Responsive behavior** — how does the UI adapt?
    - Is there a mobile navigation (hamburger menu, bottom nav)?
    - At what breakpoints do layout changes happen?
    - Are there mobile-only or desktop-only features?
 
-9. **Accessibility landmarks** — the test generator uses accessible queries:
+9. **Accessibility landmarks** — qagent uses accessible queries (getByRole, getByLabel):
    - What ARIA roles are used? (navigation, main, dialog, etc.)
-   - Are buttons and links properly labeled?
-   - Are form inputs labeled with <label> or aria-label?
-   - Are headings used semantically? (h1 for page title, h2 for sections)
+   - Are buttons and links properly labeled with aria-label or visible text?
+   - Are form inputs labeled?
 
-10. **Business logic & domain** — what makes this app tick?
-    - What are the core entities? (User, Product, Order, Post, etc.)
-    - What are the key state transitions? (draft → published, pending → paid)
-    - What validation rules matter? (required fields, format constraints, limits)
-    - What are the critical user journeys that must never break?
-
-11. **Environment & test data** — what does the dev server need?
-    - What env vars does the app need to run? (API URLs, feature flags)
-    - Does the app need a database, or does it work with mock data?
+10. **Environment & test data** — what does the dev server need?
+    - What env vars does the app need to run?
     - Are there seed data scripts or fixture files?
-    - What does a "typical" page look like with data vs without?
+    - What does a typical page look like with data vs without?
 
 ## Output format
 
-Edit qagent-skill.md directly. Keep the existing section headings. Replace the
-description text under each heading with your findings. If a section has no findings,
-remove it entirely. Never invent or assume — only write what you confirmed by reading
-actual files.
+Edit qagent-skill.md directly. Keep the existing section headings. Replace description
+text with your findings from actual files. Remove sections with nothing to add. Never
+invent or assume — only write what you confirmed by reading real code.
 
 Now open qagent-skill.md and fill in every section.`;
 

@@ -1,250 +1,281 @@
 # qagent
 
-**Local CI that tests your app in a real browser.**
+> **Change-aware E2E testing for React & Next.js**
+> Automatically generates and runs Playwright tests based on your staged changes.
 
-qagent watches your staged changes, generates Playwright tests with AI, and runs them against your live dev server — automatically, in the background, with zero test maintenance.
+---
 
-## Quick Start
+## 🚀 Why qagent?
+
+Every time you change a component, you ask:
+
+> *“Did I break something a user would notice?”*
+
+qagent answers that instantly.
+
+* 🧠 Understands your code changes
+* 🌐 Observes real browser behavior
+* 🧪 Generates meaningful Playwright tests
+* ⚡ Runs them before you commit
+
+Built for fast-moving teams without dedicated QA.
+
+---
+
+## ⚙️ How it works
+
+When you stage a file, qagent runs a pipeline:
+
+### 1. Diff Classification
+
+* Skips irrelevant changes (CSS, imports)
+* Focuses only on behavioral impact
+
+### 2. Route Mapping
+
+* Identifies which pages render the changed component
+
+### 3. Live Browser Probe
+
+* Opens real Chromium (desktop + mobile)
+* Reads accessibility tree
+* Interacts with UI (clicks, toggles, flows)
+
+### 4. Test Generation
+
+* AI generates Playwright tests based on observed behavior
+
+### 5. Execution + Refinement
+
+* Runs tests in browser
+* Fixes failures iteratively
+
+> 💡 The key advantage:
+> Tests are based on **observed UI behavior**, not guessed selectors.
+
+---
+
+## 🧩 Quick Start
 
 ```bash
-npx qagent@latest        # setup wizard — picks AI model, installs Chromium, choose run mode
-qagent watch             # start background CI (primary UX)
+npx qagent@latest   # setup (AI provider, Chromium)
+qagent watch        # run on every git add
 ```
 
-The setup wizard walks you through everything: AI provider, model selection, Chromium browser install, QA lenses, and run mode (auto on stage or manual).
-
-## How It Works
-
-qagent uses an adversarial **Generator–Evaluator loop** inspired by Anthropic's [harness design pattern for long-running AI applications](https://www.anthropic.com/engineering/harness-design-long-running-apps). An AI Generator writes tests, a real browser provides ground truth, and an AI Evaluator grades and critiques — refining until tests both pass and cover meaningful behavior.
-
-```
-git add .
-    │
-    ▼
-preflight ── model configured? API key? Chromium installed?
-    │
-    ▼
-classify ── AST-based: which files need QA? (zero AI cost)
-    │
-    ▼
-route map ── reverse import graph: component → pages (max 3)
-    │
-    ▼
-dev server ── auto-detected (Next.js / Vite / CRA), kept warm
-    │
-    ▼
-┌─────────── Generator–Evaluator Loop (per file) ───────────┐
-│                                                             │
-│  generate ── AI writes Playwright tests from source + diff  │
-│      ↓                                                      │
-│  run ── real Chromium, real page loads, real clicks          │
-│      ↓                                                      │
-│  evaluate ── AI grades on 5 criteria, diagnoses failures    │
-│      ↓                                                      │
-│  refine ── critique + runtime errors → targeted fix         │
-│      ↓                                                      │
-│      └──→ loop until pass or budget exhausted               │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-    │
-    ▼
-results ── pass/fail per file, screenshots on failure
-```
-
-### Why Two Judges?
-
-The loop has dual feedback — **runtime** (did the test actually pass in a real browser?) and **evaluator** (did the test cover real behavior, not just trivially pass?). Neither alone works:
-
-- Without runtime: AI writes tests that look right but click elements that don't exist
-- Without evaluator: tests that pass by asserting nothing meaningful
-- Together: tests must both execute correctly AND cover the business logic that changed
-
-## Commands
-
-| Command | Description |
-|---------|-------------|
-| `qagent watch` | **Primary UX** — background CI, watches for staged changes |
-| `qagent run` | One-shot QA on current staged files |
-| `qagent explain` | AI explains the last failure in plain English |
-| `qagent models` | Switch AI model (Ollama / OpenAI / Anthropic) |
-| `qagent lens` | Configure which QA lenses run |
-| `qagent skill` | Create `qagent-skill.md` with project context |
-| `qagent status` | Show config and provider status |
-
-## Watch Mode
-
-`qagent watch` is the primary way to use qagent:
-
-1. **Preflight** — verifies model, API key, and Chromium are ready
-2. **Starts your dev server** (auto-detects `next dev`, `vite`, etc.)
-3. **Builds a route map** (reverse import graph: component → pages)
-4. **Watches `.git/index`** for stage changes
-5. On change: classify → map routes → generate → run → evaluate
-6. **Results inline** — pass/fail per file, screenshot links on failure
-
-The dev server stays warm across runs. Typical cycle: **~5-10 seconds**.
+### Example Output
 
 ```
 $ qagent watch
-◆  qagent watch
-│
-◇  ✓ Ready — qwen2.5-coder:14b (ollama) + Chromium
+
+◆  qagent
+◇  ✓ gpt-4o (openai) · Chromium ready
 ◇  Route map: 21 routes
-◇  Dev server ready at http://localhost:3847
-◇  Watching for staged changes... (Ctrl+C to stop)
-│
-│  [14:23:01] Testing 1 file(s)...
-│
-│   FULL QA   site-header.tsx
-│  ├─ ✓  page loads and header is visible     1229ms
-│  ├─ ✓  mobile menu toggle interaction       1345ms
-│  └─ ✓  header hides on scroll down          1821ms
-│
-│  3/3 passed  ·  5368ms
+◇  Dev server ready — http://localhost:3000
+◇  Watching for staged changes...
+
+  [10:14:32] header.tsx
+
+   FULL QA   header.tsx
+  ├─ ✓ user can toggle mobile menu
+  ├─ ✓ user can navigate via mobile menu
+  └─ ✓ desktop navigation renders correctly
+
+  3/3 passed · 3.5s
 ```
 
-## QA Lenses
+---
 
-Each lens generates a different class of tests:
+## 🧪 Example Generated Test
 
-| Lens | What It Tests |
-|------|---------------|
-| `render` | Page loads, no crash, key elements visible |
-| `interaction` | Click, fill, submit — outcomes correct |
-| `state` | Loading, empty, error, populated states |
-| `edge-cases` | Mobile viewport, rapid clicks, back/forward |
-| `security` | Auth gates, no sensitive data in DOM, input validation |
+```ts
+test("user can toggle the mobile menu", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
 
-## Smart Classification
+  const openMenu = page.getByRole("button", { name: "Open menu" });
+  await openMenu.click();
 
-Not every file change needs AI-generated tests. The classifier examines the actual AST diff and makes instant, free decisions:
+  const closeMenu = page.getByRole("button", { name: "Close menu" });
+  await expect(closeMenu).toBeVisible();
 
-| Change Type | Action | AI Cost |
-|-------------|--------|---------|
-| Tailwind classes only | **SKIP** | $0 |
-| Import reorders | **SKIP** | $0 |
-| Prop/type changes | **LIGHTWEIGHT** | Minimal |
-| Function logic, hooks | **FULL_QA** | Full loop |
-
-On a typical 8-file stage, 2-3 files get FULL_QA. That's 60-70% cost savings.
-
-## Route Mapping
-
-qagent builds a **reverse import graph** to connect component changes to testable routes:
-
-```
-developer changes:  src/components/layout/site-header.tsx
-                            ↓
-reverse import graph:  who imports this?
-                            ↓
-                    app/@header/page.tsx  →  route: /
-                            ↓
-playwright tests:   page.goto("/")  →  assert header behavior
+  await closeMenu.click();
+  await expect(openMenu).toBeVisible();
+});
 ```
 
-- Built once on watch start (~1-3s), O(1) lookup per file
-- Layout components test `/` only (not every page)
-- Parallel route slots (`@header`, `@sidebar`) resolve to parent route
-- Capped at 3 routes per component to keep test time bounded
+---
 
-## Architecture
+## 🧠 Smart Classification
+
+Not every change needs testing.
+
+| Change Type         | Action                           |
+| ------------------- | -------------------------------- |
+| Styling / imports   | Skip                             |
+| Props / types       | Lightweight test                 |
+| Logic / state / JSX | Full QA (probe + generate + run) |
+
+---
+
+## 📦 Commands
+
+| Command          | Description                        |
+| ---------------- | ---------------------------------- |
+| `qagent watch`   | Run continuously on staged changes |
+| `qagent run`     | Run once on staged files           |
+| `qagent explain` | Explain last failure               |
+| `qagent skill`   | Generate project context file      |
+| `qagent models`  | Switch AI provider                 |
+| `qagent status`  | Check setup                        |
+
+---
+
+## 🧾 Skill File (Project Context)
+
+`qagent-skill.md` improves accuracy by defining:
+
+* Routes
+* User flows
+* Auth patterns
+* UI conventions
+
+```bash
+qagent skill
+```
+
+Then let an AI (Cursor / Claude) fill it based on your codebase.
+
+> Without this: qagent guesses
+> With this: qagent understands
+
+---
+
+## 🤖 AI Providers
+
+### Local (recommended)
+
+```bash
+ollama pull qwen2.5-coder:14b
+```
+
+### Cloud
+
+```bash
+export OPENAI_API_KEY=sk-...
+export ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Switch anytime:
+
+```bash
+qagent models
+```
+
+---
+
+## ⚙️ Configuration
+
+```
+~/.qagentrc           # AI provider + model
+.qagent/config.json   # runtime config
+qagent-skill.md       # project context
+```
+
+---
+
+## 🏗️ Architecture
 
 ```
 src/
-├── preflight/      # Pre-run checks: model, API key, Ollama, Chromium
-├── classifier/     # AST-based diff classification (SKIP / LIGHTWEIGHT / FULL_QA)
-├── analyzer/       # ts-morph component analysis (type, props, exports, security)
-├── routes/         # Reverse import graph — component → route mapping
-├── server/         # Dev server lifecycle (auto-detect, start, health poll)
-├── generator/      # AI prompt builder → Playwright test code
-├── runner/         # Spawn Playwright, parse JSON results, browser detection
-├── evaluator/      # AI grades results on weighted criteria, builds refinement prompts
-├── reporter/       # Terminal tree renderer + markdown reports
-├── context/        # Per-file import graph (2 levels deep) for prompt context
-├── scanner/        # Project structure detection (router type, hooks)
-├── agent/          # Security analysis agent (tool-calling: grep + read_file)
-├── feedback/       # Cross-run failure memory (auto-clears on pass)
-├── git/            # Staged file reader
-├── providers/      # Unified AI abstraction (Ollama, OpenAI, Anthropic)
-├── config/         # Config types, loader (~/.qagentrc + .qagent/config.json)
-├── skill/          # Playwright-oriented skill file template + IDE prompt
-├── cli/commands/
-│   ├── init.ts     # Setup wizard (provider, Chromium, lenses, run mode, skill)
-│   ├── watch.ts    # Background CI (primary UX)
-│   ├── run.ts      # One-shot QA with preflight + GAN loop
-│   ├── explain.ts  # AI failure explanation
-│   └── ...
-└── utils/          # Package manager detection, prompt helpers
+├── probe/        # Browser interaction + a11y extraction
+├── analyzer/     # Source code analysis
+├── classifier/   # Diff → test decision
+├── generator/    # AI prompt + test generation
+├── evaluator/    # Test quality + refinement
+├── runner/       # Playwright execution
+├── routes/       # Component → route mapping
+├── server/       # Dev server lifecycle
+├── agent/        # Agent loops
+├── context/      # Import graph context
+├── scanner/      # Project detection
+├── feedback/     # Failure memory
+├── providers/    # AI integrations
+├── reporter/     # CLI output
+└── cli/          # Commands
 ```
 
-See [docs/architecture.md](docs/architecture.md) for the full technical deep-dive.
+---
 
-## Tech Stack
+## 🛠️ Development
 
-| Component | Technology |
-|-----------|-----------|
-| Test execution | **Playwright** (real Chromium browser) |
-| Test generation | AI (Ollama / OpenAI / Anthropic) |
-| Code analysis | ts-morph (TypeScript AST) |
-| Diff classification | AST-based heuristics (zero AI cost) |
-| Route mapping | Precomputed reverse import graph |
-| CLI | Commander + @clack/prompts |
-| Git | simple-git |
-
-## Configuration
-
-AI provider configured in `~/.qagentrc`:
-```
-provider=ollama
-model=qwen2.5-coder:14b
-```
-
-Project config in `.qagent/config.json`:
-```json
-{
-  "lenses": ["render", "interaction", "state", "edge-cases", "security"],
-  "evaluator": {
-    "enabled": true,
-    "maxIterations": 3,
-    "acceptThreshold": 7
-  },
-  "watch": {
-    "debounceMs": 300,
-    "maxRoutes": 3
-  }
-}
-```
-
-## Skill File
-
-`qagent-skill.md` gives the test generator project-specific context — routes, auth patterns, UI components, navigation structure, accessibility landmarks. Without it, the AI guesses. With it, tests use correct selectors on the first try.
+### Setup
 
 ```bash
-qagent skill    # creates template + prints IDE prompt
+git clone https://github.com/Shanvit7/qagent.git
+cd qagent
+bun install
+bun run check
 ```
 
-Paste the IDE prompt into Cursor / Claude Code / ChatGPT and let it explore your codebase to fill in the skill file automatically.
+### Run locally
 
-## How It's Different
+```bash
+bun run dev
+bun run dev -- run
+bun run dev -- status
+```
 
-| Tool | Approach | qagent |
-|------|----------|--------|
-| Copilot / ChatGPT | Single-shot generation, you verify | **Adversarial loop, self-verifying** |
-| Vitest / Jest | You write tests manually | **Zero test maintenance** |
-| Cypress Cloud | You write E2E tests | **AI generates from diffs, delta-focused** |
-| Codium / Diffblue | Generate unit tests | **Real browser, no mocks, no jsdom** |
+### Build & Test
 
-## Design Inspiration
+```bash
+bun run build
+bun run test
+bun run typecheck
+```
 
-The Generator–Evaluator architecture is inspired by Anthropic's [harness design pattern](https://www.anthropic.com/engineering/harness-design-long-running-apps) for building reliable long-running AI applications. The key insight: instead of trusting a single AI call, use an adversarial structure where one agent generates and another evaluates — with a real-world environment (the browser) as the ultimate arbiter of correctness.
+---
 
-## Requirements
+## 🧪 Testing
 
-- Node.js 18+
-- Git repository
-- React / Next.js project with a dev server
-- AI provider: local [Ollama](https://ollama.com) (free) or cloud API key (OpenAI / Anthropic)
+* Tests are co-located with modules
+* Run all tests:
 
-## License
+```bash
+bun test
+```
 
-MIT — built by [Shanvit Shetty](https://github.com/Shanvit7)
+* Run specific module:
+
+```bash
+bun test src/classifier
+```
+
+---
+
+## 📋 Requirements
+
+* Node.js 18+
+* Bun (dev)
+* React / Next.js app
+* Running dev server
+* Git
+
+---
+
+## 🎯 Philosophy
+
+qagent is not trying to replace QA.
+
+It acts as:
+
+> **A fast, deterministic guardrail for user-facing regressions**
+
+* Tests what changed
+* Observes real behavior
+* Keeps dev velocity high
+
+---
+
+## 📄 License
+
+MIT © [Shanvit Shetty](https://github.com/Shanvit7)

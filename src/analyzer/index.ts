@@ -183,10 +183,9 @@ const extractComponentName = (text: string, filePath: string): string | undefine
  * Analyze a TypeScript / TSX source file and return a `FileAnalysis`
  * suitable for Playwright test generation.
  *
- * Uses a fast text + regex strategy first; ts-morph is only instantiated
- * when a full AST walk is needed (currently not required for the Playwright
- * pivot — selectors come from the raw source, not the AST).  The ts-morph
- * import is retained so it is available for future AST-heavy passes.
+ * Uses a fast text + regex strategy. Selector derivation is handled by the
+ * runtime probe (src/probe/) which captures the live accessibility tree —
+ * the analyzer focuses on component type, props, and security findings.
  *
  * @throws if the file cannot be read.
  */

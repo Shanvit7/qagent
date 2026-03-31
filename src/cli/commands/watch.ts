@@ -22,6 +22,7 @@ import { loadConfig } from "@/config/loader";
 import { scanProject, writeScanCache, scanToMarkdown } from "@/scanner/index";
 import { buildFileContext } from "@/context/index";
 import { buildRouteMap, findRoutesForFile, updateRouteMap, type RouteMap } from "@/routes/index";
+import { probeRoute } from "@/probe/index";
 import { startServer, type ServerHandle } from "@/server/index";
 
 
@@ -84,6 +85,9 @@ const runCycle = async (cwd: string): Promise<void> => {
       // Update route map incrementally for this changed file
       updateRouteMap(routeMap, file.path, cwd);
 
+      // Probe: navigate to route in real browser, capture live ground truth
+      const runtimeProbe = await probeRoute(routes[0] ?? "/", server.url, cwd);
+
       // Generate
       const fileContext = buildFileContext(file.path, cwd);
       const genOptions: GenerateTestsOptions = {
@@ -92,6 +96,7 @@ const runCycle = async (cwd: string): Promise<void> => {
         classificationAction: classification.action,
         classificationReason: classification.reason,
         changedRegions: classification.changedRegions,
+        runtimeProbe: runtimeProbe.success ? runtimeProbe : undefined,
       };
 
       let testCode: string;

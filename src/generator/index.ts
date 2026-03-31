@@ -9,7 +9,10 @@ import type { AiConfig, QAgentConfig } from "@/config/types";
 // All lenses — always available internally, filtered by region at generation time
 type QaLens = "render" | "interaction" | "state" | "edge-cases" | "security";
 const ALL_LENSES: QaLens[] = ["render", "interaction", "state", "edge-cases", "security"];
+import type { RuntimeProbe } from "@/probe/index";
+import { formatProbeForPrompt } from "@/probe/index";
 import type { FileContext } from "@/context/index";
+
 import { runSecurityAnalysis } from "@/agent/security";
 import { generate } from "@/providers/index";
 import { HARD_RULES } from "@/evaluator/index";
@@ -24,39 +27,34 @@ export interface GeneratedTests {
 // Each description gives the AI a concrete goal + assertion pattern, not just a label.
 
 const LENS_DESCRIPTIONS: Record<QaLens, string> = {
-  render: `**Render** — the page loads and meaningful content is visible.
+  render: `**Render** — the page loads and the user sees meaningful content.
   - Navigate to the route, wait for \`domcontentloaded\`
-  - Assert the page title or a key heading exists: \`expect(page.getByRole("heading", { name: /…/i })).toBeVisible()\`
-  - Assert at least one landmark is present (nav, main, header) using the ACTUAL element from source
+  - Assert a specific heading, landmark, or content element the user would actually see
   - Assert no error boundary text ("Something went wrong", "Error:", "500") is visible
-  - DO NOT just assert \`body\` or \`html\` — pick specific, meaningful elements from the source code`,
+  - Use elements from the live probe snapshot or source — never assert \`body\` or \`html\``,
 
-  interaction: `**Interaction** — user actions produce the correct observable outcome.
-  - Identify every interactive element in the source: buttons, links, inputs, selects
-  - For each action, assert the SPECIFIC OUTCOME: new text appears, URL changes, element shows/hides, form clears
-  - Example: fill input → click submit → \`expect(page.getByText("Success")).toBeVisible()\`
-  - Example: click toggle → \`expect(page.getByRole("menu")).toBeVisible()\`
-  - A test that clicks a button but only re-checks \`toBeVisible()\` on the same element is WORTHLESS`,
+  interaction: `**Interaction** — a user can complete the primary action this component enables.
+  - Frame as a user goal: "user opens menu", "user submits form", "user selects option"
+  - Use the interaction outcomes from the live probe snapshot to know the exact before/after locators
+  - Assert the USER-VISIBLE OUTCOME: something new appears, URL changes, content updates
+  - If the probe shows a button changes name after click (e.g. "Open menu" → "Close menu"),
+    re-query with the NEW name: \`page.getByRole("button", { name: "Close menu" })\`
+  - Never assert implementation details (CSS classes, aria attributes for their own sake)`,
 
-  state: `**State** — async data states are handled and visible.
-  - If the component fetches data: assert the loaded state (populated list items, user name, prices)
-  - If there's a loading state: navigate and check the spinner appears then disappears (\`toBeHidden()\`)
-  - If there's an empty state: assert the "no results" / "empty" message text from the source
-  - If there's an error boundary: assert it shows human-readable error copy, not a stack trace
-  - Use \`page.waitForSelector()\` or \`toBeVisible({ timeout: 5000 })\` for async content`,
+  state: `**State** — async data loads and error states are handled gracefully.
+  - If the component fetches data: assert the loaded content (list items, user name, prices)
+  - If there's a loading state: navigate and assert the spinner appears then content loads
+  - If there's an error state: assert a human-readable message, not a stack trace`,
 
-  "edge-cases": `**Edge cases** — the component holds up under non-happy-path conditions.
-  - **Mobile**: \`page.setViewportSize({ width: 375, height: 667 })\` before navigating — check nav collapses, tap targets ≥ 44px, no horizontal scroll (\`page.evaluate(() => document.body.scrollWidth <= window.innerWidth)\`)
-  - **Keyboard**: \`page.keyboard.press("Tab")\` through interactive elements — assert focus is visible
-  - **Back/forward**: navigate to route, click a link, press \`page.goBack()\` — assert original content restored
-  - **Rapid clicks**: click a button 3× quickly — assert no duplicate submissions or broken UI
-  - **Animation settle**: instead of \`page.waitForTimeout()\`, use \`await page.locator("header").waitFor({ state: "hidden" })\` or \`await expect(locator).toBeHidden()\` — Playwright auto-waits on locator assertions`,
+  "edge-cases": `**Edge cases** — the user flow works across contexts.
+  - Mobile viewport: set \`page.setViewportSize()\` matching the probe snapshot viewport where the element appears
+  - Keyboard: Tab through interactive elements and assert focus is visible
+  - Back navigation: navigate away and back, assert content is restored`,
 
-  security: `**Security** — auth gates hold and sensitive data stays hidden.
-  - Navigate to the route in a fresh context (no cookies) — assert redirect to \`/login\` or \`/auth\` or a 401 response
-  - Assert that raw API keys, tokens, or passwords are NOT visible in the DOM: \`expect(page.getByText(/Bearer /)).not.toBeVisible()\`
-  - For forms: submit with empty required fields — assert validation message appears, form does NOT submit
-  - For server actions: attempt CSRF / direct POST via \`page.request.post()\` without session — assert 401 or redirect`,
+  security: `**Security** — protected routes are inaccessible without auth, forms validate correctly.
+  - Navigate without session — assert redirect or 401
+  - Submit form with empty required fields — assert validation message, no submission
+  - Assert no raw secrets/tokens visible in the DOM`,
 };
 
 // ─── Component-type strategy blocks ──────────────────────────────────────────
@@ -126,11 +124,8 @@ Hooks have no UI — test through the page that uses them. Find the route that r
 await page.goto("/route-using-hook");
 await page.waitForLoadState("domcontentloaded");
 // Test the USER-VISIBLE BEHAVIOR the hook enables
-// e.g. if useScroll → test that header hides on scroll
-await page.evaluate(() => window.scrollTo(0, 300));
-await expect(page.locator("header")).toBeHidden(); // auto-waits for animation
-const box = await page.locator("header").boundingBox();
-expect(box?.y).toBeLessThan(0); // scrolled off-screen
+// e.g. if the hook manages scroll → scroll the page and assert the visual outcome
+// e.g. if the hook manages form state → fill inputs and assert the result
 \`\`\``,
 
   "utility": `**Strategy: Utility function**
@@ -196,37 +191,22 @@ import type { ChangeRegion } from "@/classifier/index";
 
 const SELECTOR_RULES = `## Selector rules
 
-**Rule 1 — Read from source, never invent**
-Every \`getByRole()\`, \`getByText()\`, \`getByLabel()\` must match the EXACT aria-label, link text, or heading in the JSX above.
+**Rule 1 — Use the live probe snapshot as primary source**
+When a live probe snapshot is provided above, use the exact \`getByRole\` / \`getByLabel\` locators listed there.
+If an element appears in one viewport but not another, set the matching viewport BEFORE \`page.goto()\`.
 
-**Rule 2 — Query hierarchy**
-1. \`page.getByRole("button", { name: /exact label from source/i })\`
+**Rule 2 — Fall back to source code when no probe is available**
+Read the JSX and extract exact aria-labels, roles, and text content. Never invent selectors.
+
+**Rule 3 — Query hierarchy**
+1. \`page.getByRole("button", { name: /exact label/i })\`
 2. \`page.getByLabel(/label text/i)\`
 3. \`page.getByText(/visible text/i)\`
 4. \`page.locator("semantic-tag")\` — only when no role/label exists
 
-**Rule 3 — HTML roles**
+**Rule 4 — HTML roles**
 - \`<header>\` → role "banner" only when direct child of \`<body>\`. Otherwise \`page.locator("header").first()\`
-- \`<nav aria-label="X">\` → \`page.getByRole("navigation", { name: "X" })\`
-
-**Rule 4 — CSS transforms are NOT visibility**
-\`transform: translateY(-100%)\` does NOT affect \`toBeVisible()\`.
-For elements moved off-screen by CSS/animation, check position with \`boundingBox()\`:
-\`expect((await page.locator("header").boundingBox())?.y).toBeLessThan(0)\`
-
-**Rule 5 — Read the source for visibility signals**
-Before asserting hidden/visible state on any element, read how the source ACTUALLY hides it:
-- Is it \`display:none\`? → \`toBeHidden()\` works
-- Is it a CSS class toggle (\`hidden\`, \`invisible\`)? → check the class or use \`boundingBox()\`
-- Is it an attribute like \`aria-hidden\` or \`inert\`? → \`toHaveAttribute("aria-hidden", "true")\`
-- Is it a CSS transform? → \`boundingBox()\`
-Do not assume \`toBeVisible()\` / \`toBeHidden()\` work — check the source first.
-
-**Rule 6 — Viewport before navigation**
-If the element you're testing is only visible at a specific breakpoint (e.g. a mobile menu, a sidebar),
-set the viewport BEFORE \`page.goto()\`:
-\`await page.setViewportSize({ width: 390, height: 844 }); // mobile\`
-Read the source for responsive classes (\`md:hidden\`, \`lg:flex\`, etc.) to know which viewport to use.`;
+- \`<nav aria-label="X">\` → \`page.getByRole("navigation", { name: "X" })\``;
 
 // Maps classifier regions to plain-English test focus hints.
 const REGION_FOCUS: Partial<Record<ChangeRegion, string>> = {
@@ -334,6 +314,8 @@ interface PromptInput {
   classificationAction?: string | undefined;
   classificationReason?: string | undefined;
   changedRegions?: string[] | undefined;
+  /** Live page snapshot captured before generation — ground truth for selectors */
+  runtimeProbe?: RuntimeProbe | undefined;
 }
 
 const buildPrompt = (input: PromptInput): string => {
@@ -364,6 +346,11 @@ const buildPrompt = (input: PromptInput): string => {
     ? `**Props:** \`${analysis.props.join("`, `")}\``
     : "";
 
+  // ── Runtime probe — live page ground truth (takes priority over source analysis) ──
+  const probeBlock = input.runtimeProbe
+    ? formatProbeForPrompt(input.runtimeProbe)
+    : "";
+
   // ── New file: cover the whole component ──────────────────────────────────
   if (isNewFile) {
     return [
@@ -378,6 +365,7 @@ const buildPrompt = (input: PromptInput): string => {
       analysis.sourceText,
       "```",
       ``,
+      probeBlock,
       `## ${STRATEGY[analysis.componentType]}`,
       ``,
       buildSecurityBlock(analysis, activeLenses, input.agentSecurityContext),
@@ -385,7 +373,9 @@ const buildPrompt = (input: PromptInput): string => {
       input.scanContext ? `## Project context\n${input.scanContext}` : "",
       input.skillContext ? `## Project skill file\n${input.skillContext}` : "",
       ``,
-      `## Test goals — write 4-6 tests covering these lenses`,
+      `## Test goals — write 2-4 behavioral regression tests`,
+      `Each test should answer: "can a user still complete this action after the change?"`,
+      `Frame tests as user goals, not component inspection.`,
       lensBlock,
       ``,
       SELECTOR_RULES,
@@ -405,8 +395,8 @@ const buildPrompt = (input: PromptInput): string => {
   );
 
   const testCountHint = input.classificationAction === "LIGHTWEIGHT"
-    ? "Write **1-2 tests** that directly cover this change. No more."
-    : `Write **2-4 tests** focused on the changed behavior. Do NOT write tests for parts of the component that did not change.`;
+    ? "Write **1 test** that directly verifies the changed behavior still works for a user. No more."
+    : `Write **2-3 behavioral regression tests**. Each answers: "can a user still do X after this change?" Test the flow, not the implementation.`;
 
   return [
     `You are a senior QA engineer writing Playwright tests for a LIVE app running in Chromium.`,
@@ -428,6 +418,7 @@ const buildPrompt = (input: PromptInput): string => {
     analysis.sourceText,
     "```",
     ``,
+    probeBlock,
     `## ${STRATEGY[analysis.componentType]}`,
     ``,
     buildSecurityBlock(analysis, activeLenses, input.agentSecurityContext),
@@ -468,6 +459,8 @@ export interface GenerateTestsOptions {
   classificationAction?: string | undefined;
   classificationReason?: string | undefined;
   changedRegions?: string[] | undefined;
+  /** Live page snapshot — when provided, used as ground truth for selectors */
+  runtimeProbe?: RuntimeProbe | undefined;
 }
 
 export const generateTests = async (
@@ -499,6 +492,7 @@ export const generateTests = async (
     classificationAction: options.classificationAction,
     classificationReason: options.classificationReason,
     changedRegions: options.changedRegions,
+    runtimeProbe: options.runtimeProbe,
   });
 
   const raw = await callProvider(prompt, config.ai);
