@@ -2,6 +2,8 @@
  * Evaluator criteria for Playwright browser tests.
  */
 
+import type { ChangeRegion } from "@/classifier/index";
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface GradingCriterion {
@@ -107,3 +109,76 @@ export const allCriteriaPassed = (
 
 export const buildCriteriaPromptSection = (criteria: readonly GradingCriterion[]): string =>
   criteria.map((c) => `- **${c.name}** (weight ${c.weight}, pass ≥ ${c.threshold}): ${c.description}`).join("\n");
+
+// ─── Region-aware criteria weighting ─────────────────────────────────────────
+
+/**
+ * Build a re-weighted criteria list based on the classifier's changedRegions.
+ *
+ * Rules (multiple can activate simultaneously):
+ * - event-handler      → interactions-work weight → 5
+ * - async-logic        → assertion-depth weight → 5; adds async-states criterion
+ * - hook-deps          → assertion-depth weight → 5; adds async-states criterion
+ * - server-action      → adds security criterion at weight 4
+ * - jsx-markup         → selector-quality weight → 4
+ * - conditional-render → assertion-depth weight → 5
+ *
+ * Falls back to DEFAULT_CRITERIA when regions is empty.
+ */
+export const buildCriteriaForRegions = (regions: ChangeRegion[]): GradingCriterion[] => {
+  if (regions.length === 0) return DEFAULT_CRITERIA.map((c) => ({ ...c }));
+
+  const base: GradingCriterion[] = DEFAULT_CRITERIA.map((c) => ({ ...c }));
+  const extra: GradingCriterion[] = [];
+
+  const has = (r: ChangeRegion): boolean => regions.includes(r);
+
+  if (has("event-handler")) {
+    boost(base, "interactions-work", 5);
+  }
+
+  if (has("async-logic") || has("hook-deps")) {
+    boost(base, "assertion-depth", 5);
+    if (!extra.some((c) => c.name === "async-states")) {
+      extra.push({
+        name: "async-states",
+        // High (8-10): tests loading, error, and resolved states with specific content checks
+        // Mid (5-7): tests only the resolved / happy-path state
+        // Low (1-4): no async state assertions at all
+        description: "Async states (loading, error, resolved) are each asserted with specific content or indicators",
+        weight: 4,
+        threshold: 5,
+      });
+    }
+  }
+
+  if (has("server-action")) {
+    if (!extra.some((c) => c.name === "security")) {
+      extra.push({
+        name: "security",
+        // High (8-10): tests unauthorized access rejection, invalid-input validation, safe form submission
+        // Mid (5-7): tests happy-path submission with some validation
+        // Low (1-4): no security-oriented assertions at all
+        description: "Security-relevant behaviors tested: auth checks, input validation rejection, and safe form submission",
+        weight: 4,
+        threshold: 5,
+      });
+    }
+  }
+
+  if (has("jsx-markup")) {
+    boost(base, "selector-quality", 4);
+  }
+
+  if (has("conditional-render")) {
+    boost(base, "assertion-depth", 5);
+  }
+
+  return [...base, ...extra];
+};
+
+/** Raise a criterion's weight; never lower it. */
+const boost = (criteria: GradingCriterion[], name: string, weight: number): void => {
+  const c = criteria.find((x) => x.name === name);
+  if (c) c.weight = Math.max(c.weight, weight);
+};

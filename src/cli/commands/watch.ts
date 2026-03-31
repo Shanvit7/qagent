@@ -128,6 +128,7 @@ const runCycle = async (cwd: string): Promise<void> => {
 
         try {
           const evaluation = await evaluateTests(testCode, analysis, config.ai, {
+            changedRegions: classification.changedRegions,
             failedTests: failedTests.map((t) => ({
               name: t.name,
               error: t.failureMessage,
