@@ -16,6 +16,7 @@ import { generateTests, refineTests, type GenerateTestsOptions } from "@/generat
 import { runPlaywrightTest, type StructuredTestResult } from "@/runner/index";
 import { evaluateTests, buildRefinementPrompt, HARD_RULES } from "@/evaluator/index";
 import type { EvaluationResult } from "@/evaluator/index";
+import { classifyTestCode } from "@/test-classifier/index";
 import { loadConfig } from "@/config/loader";
 import { runPreflight } from "@/preflight/index";
 import { scanProject, writeScanCache, scanToMarkdown } from "@/scanner/index";
@@ -164,6 +165,35 @@ const processFile = async (
         break;
       }
       continue;
+    }
+
+    // -- Pre-classify: catch structural failures before LLM evaluator --
+    const preCheck = classifyTestCode(testCode, classification.changedRegions);
+    if (preCheck.issues.length > 0) {
+      const issueList = preCheck.issues.join(", ");
+      if (!preCheck.passed) {
+        // Hard-fail — skip Playwright spawn entirely, go straight to refinement
+        p.log.warn(color.yellow(`  Iteration ${iter}: pre-classifier hard-fail [${issueList}] — skipping run`));
+
+        if (iter === maxIter) {
+          p.log.message(color.dim("  Max iterations reached — skipping file"));
+          break;
+        }
+
+        const beforePreRefine = getSessionUsage();
+        try {
+          testCode = await refineTests(testCode, preCheck.feedback, config.ai);
+          const refineTokens = formatTokenDelta(beforePreRefine, getSessionUsage());
+          p.log.message(color.dim(`  Refined (pre-check)${refineTokens ? `  ${refineTokens}` : ""}`));
+        } catch {
+          p.log.message(color.dim("  Refinement failed — skipping file"));
+          break;
+        }
+        continue;
+      } else {
+        // Warnings — let the run proceed but surface the hints
+        p.log.message(color.dim(`  Pre-classifier warnings [${issueList}]`));
+      }
     }
 
     const runSpinner = p.spinner();
