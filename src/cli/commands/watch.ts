@@ -24,6 +24,7 @@ import { buildFileContext } from "@/context/index";
 import { buildRouteMap, findRoutesForFile, updateRouteMap, type RouteMap } from "@/routes/index";
 import { probeRoute } from "@/probe/index";
 import { startServer, type ServerHandle } from "@/server/index";
+import { ProviderError, formatProviderError } from "@/providers/index";
 
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -107,7 +108,12 @@ const runCycle = async (cwd: string): Promise<void> => {
         );
         testCode = generated.testCode;
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
+        if (err instanceof ProviderError && err.kind === "quota") {
+          p.log.error(formatProviderError(err));
+          p.log.message(color.dim("Add credits to your provider account — watch mode paused."));
+          return; // stop this cycle; watcher stays alive for next stage
+        }
+        const msg = formatProviderError(err);
         p.log.warn(`${label} — AI unavailable: ${msg}`);
         continue;
       }
@@ -164,7 +170,12 @@ const runCycle = async (cwd: string): Promise<void> => {
           // Print retry result
           printResult(label, routes, retryResult, "(retry)");
           continue;
-        } catch {
+        } catch (refineErr) {
+          if (refineErr instanceof ProviderError && refineErr.kind === "quota") {
+            p.log.error(formatProviderError(refineErr));
+            p.log.message(color.dim("Add credits to your provider account — watch mode paused."));
+            return;
+          }
           // Evaluator/refinement failed — print original result
         }
       }
@@ -230,6 +241,15 @@ export const watchCommand = async (): Promise<void> => {
 
   const config = loadConfig(cwd);
 
+  // -- Require Next.js (beta scope) --
+  const scan = scanProject(cwd);
+  if (scan.nextjsRouter === "none") {
+    p.log.error("qagent currently requires a Next.js project (app/ or pages/ directory not found).");
+    p.outro(color.dim("Next.js App Router and Pages Router are supported as of now"));
+    process.exit(1);
+    return;
+  }
+
   // -- Build route map --
   const routeSpinner = p.spinner();
   routeSpinner.start("Building route map");
@@ -274,7 +294,6 @@ export const watchCommand = async (): Promise<void> => {
   });
 
   // Write scan cache once on start
-  const scan = scanProject(cwd);
   writeScanCache(cwd, scan);
 
   p.log.success("Watching for staged changes... (Ctrl+C to stop)");

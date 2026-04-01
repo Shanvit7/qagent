@@ -33,7 +33,7 @@ export interface WatchConfig {
 }
 
 export interface PlaywrightConfig {
-  /** Per-test timeout (ms). Default: 15000 */
+  /** Per-test timeout (ms). Default: 30000 */
   timeout: number;
   server: ServerConfig;
   browser: BrowserConfig;

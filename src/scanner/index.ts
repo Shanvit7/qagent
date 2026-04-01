@@ -48,8 +48,8 @@ const readSafe = (path: string): string => {
 // ─── Structural detectors ─────────────────────────────────────────────────────
 
 const detectRouter = (cwd: string): ProjectScan["nextjsRouter"] => {
-  if (existsSync(join(cwd, "app")))   return "app";
-  if (existsSync(join(cwd, "pages"))) return "pages";
+  if (existsSync(join(cwd, "src", "app")) || existsSync(join(cwd, "app")))   return "app";
+  if (existsSync(join(cwd, "src", "pages")) || existsSync(join(cwd, "pages"))) return "pages";
   return "none";
 };
 

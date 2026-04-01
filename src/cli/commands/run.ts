@@ -30,7 +30,7 @@ import {
   type FileReport,
 } from "@/reporter/index";
 import { loadFailureContext, updateFailureContext, type FailureContext } from "@/feedback/index";
-import { getSessionUsage, resetSessionUsage, formatTokenDelta, formatTokenSummary } from "@/providers/index";
+import { getSessionUsage, resetSessionUsage, formatTokenDelta, formatTokenSummary, ProviderError, formatProviderError } from "@/providers/index";
 import { sanitizeTestCode } from "@/sanitizer/index";
 import { MIN_ITERATIONS, MAX_ITERATIONS } from "@/config/loader";
 
@@ -123,7 +123,12 @@ const processFile = async (
     const genTokens = formatTokenDelta(beforeGen, getSessionUsage());
     s.stop(`Tests generated${genTokens ? color.dim(`  ${genTokens}`) : ""}`);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    if (err instanceof ProviderError && err.kind === "quota") {
+      s.stop(color.red(`Quota exhausted`));
+      p.log.error(formatProviderError(err));
+      process.exit(1);
+    }
+    const message = formatProviderError(err);
     s.stop(color.yellow(`AI unavailable — skipping (${message})`));
     return { report: null, failureText: null };
   }
@@ -213,7 +218,8 @@ const processFile = async (
         testCode = await refineAndSanitize(testCode, noTestPrompt);
         const refineTokens = formatTokenDelta(beforeRefineNoTest, getSessionUsage());
         p.log.message(color.dim(`  Regenerated${refineTokens ? `  ${refineTokens}` : ""}`));
-      } catch {
+      } catch (refineErr) {
+        if (refineErr instanceof ProviderError && refineErr.kind === "quota") throw refineErr;
         p.log.message(color.dim("  Regeneration failed — skipping file"));
         break;
       }
@@ -238,7 +244,8 @@ const processFile = async (
           testCode = await refineAndSanitize(testCode, preCheck.feedback);
           const refineTokens = formatTokenDelta(beforePreRefine, getSessionUsage());
           p.log.message(color.dim(`  Refined (pre-check)${refineTokens ? `  ${refineTokens}` : ""}`));
-        } catch {
+        } catch (refineErr) {
+          if (refineErr instanceof ProviderError && refineErr.kind === "quota") throw refineErr;
           p.log.message(color.dim("  Refinement failed — skipping file"));
           break;
         }
@@ -321,7 +328,33 @@ const processFile = async (
       let anyFixed = false;
       for (const t of failedTests.slice(0, 4)) {
         const streak = failStreak.get(t.name) ?? 1;
-        const escalate = streak >= 2;
+        const errMsg = t.failureMessage ?? "unknown error";
+
+        // Classify the failure so the refinement prompt is targeted
+        const isResponseTimeout = /TimeoutError.*waitForResponse|waitForURL.*Timeout|Timeout.*waitForResponse/i.test(errMsg);
+        const isSelectorTimeout = /TimeoutError.*locator|waiting for.*selector|toBeVisible.*Timeout|toHaveText.*Timeout/i.test(errMsg) && !isResponseTimeout;
+        const escalate = streak >= 2 && !isResponseTimeout; // never simplify a response-timeout test
+
+        let escalationHint: string;
+        if (isResponseTimeout) {
+          escalationHint = [
+            `This test timed out waiting for a server response (waitForResponse / waitForURL).`,
+            `The backend may be slow or the route handler may need an env var (DB_URL, API_KEY, etc.).`,
+            `DO NOT simplify or remove the waitForResponse — it is the correct pattern.`,
+            `Instead: wrap the waitForResponse in a longer timeout using \`page.waitForResponse(pred, { timeout: 30_000 })\`.`,
+            `If you cannot determine the correct URL predicate from the source, assert a DOM outcome that appears after the action instead.`,
+          ].join("\n");
+        } else if (escalate) {
+          escalationHint = [
+            `This test has failed ${streak} times with a selector/assertion issue.`,
+            `Simplify "${t.name}" to: navigate → assert the key element is visible (toBeVisible only).`,
+            `Do NOT assert text content, attributes, or post-interaction state.`,
+          ].join("\n");
+        } else if (isSelectorTimeout) {
+          escalationHint = `The selector timed out — the element may not exist or has a different role/name. Re-read the source code above and pick the correct locator.`;
+        } else {
+          escalationHint = `Read the error and source above. Fix only the "${t.name}" test. Keep all other tests identical.`;
+        }
 
         const singleTestPrompt = [
           `Fix this failing Playwright test for \`${analysis.filePath}\` (route: \`${routes[0] ?? "/"}\`).`,
@@ -338,16 +371,10 @@ const processFile = async (
           "",
           `## Failing test: "${t.name}"`,
           "```",
-          (t.failureMessage ?? "unknown error").slice(0, 600),
+          errMsg.slice(0, 600),
           "```",
           "",
-          escalate
-            ? [
-                `This test has failed ${streak} times. Stop trying complex assertions.`,
-                `Simplify "${t.name}" to: navigate → assert the key element is visible (toBeVisible only).`,
-                `Do NOT assert text content, attributes, or post-interaction state.`,
-              ].join("\n")
-            : `Read the error and source above. Fix only the "${t.name}" test. Keep all other tests identical.`,
+          escalationHint,
           "",
           HARD_RULES,
         ].join("\n");
@@ -358,7 +385,8 @@ const processFile = async (
           anyFixed = true;
           const tok = formatTokenDelta(before, getSessionUsage());
           fixSpinner.message(`Fixed "${t.name}"${tok ? color.dim(`  ${tok}`) : ""}`);
-        } catch {
+        } catch (fixErr) {
+          if (fixErr instanceof ProviderError && fixErr.kind === "quota") throw fixErr;
           // leave this test as-is, move to next
         }
       }
@@ -389,7 +417,8 @@ const processFile = async (
         previousCritique: lastCritique,
         iteration: iter,
       });
-    } catch {
+    } catch (evalErr) {
+      if (evalErr instanceof ProviderError && evalErr.kind === "quota") throw evalErr;
       evalSpinner.stop(color.dim("Evaluator unavailable — using current tests"));
       bestResult = result; bestCode = testCode;
       break;
@@ -549,6 +578,13 @@ export const runCommand = async (options: RunOptions = {}): Promise<void> => {
   const scanContext = scanToMarkdown(scan);
   const router      = scan.nextjsRouter;
 
+  if (router === "none") {
+    p.log.error("qagent currently requires a Next.js project (app/ or pages/ directory not found).");
+    p.outro(color.dim("Next.js App Router and Pages Router are supported as of now."));
+    process.exit(1);
+    return;
+  }
+
   // -- 1. Staged files --
   const s = p.spinner();
   s.start("Reading staged files");
@@ -589,7 +625,7 @@ export const runCommand = async (options: RunOptions = {}): Promise<void> => {
   const routeSpinner = p.spinner();
   routeSpinner.start("Building route map");
   const routeMap = buildRouteMap(cwd);
-  routeSpinner.stop(`Route map: ${routeMap.routeIndex.size} routes found`);
+  routeSpinner.stop(`Route map: ${routeMap.routeIndex.size} routes`);
 
   // -- 4. Start dev server --
   const serverSpinner = p.spinner();
@@ -655,6 +691,16 @@ export const runCommand = async (options: RunOptions = {}): Promise<void> => {
     } else {
       p.log.error("QA issues found.");
       p.outro("Run " + color.cyan("`qagent explain`") + " to understand the failures.");
+    }
+  } catch (err) {
+    if (err instanceof ProviderError) {
+      p.log.error(formatProviderError(err));
+      if (err.kind === "quota") {
+        p.outro(color.dim("Add credits to your provider account, then re-run."));
+      }
+      process.exitCode = 1;
+    } else {
+      throw err;
     }
   } finally {
     // Always stop the dev server

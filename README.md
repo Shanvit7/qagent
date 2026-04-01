@@ -1,6 +1,6 @@
 # qagent
 
-> **Change-aware E2E testing for React & Next.js**
+> **Change-aware E2E testing for Next.js**
 > Automatically generates and runs Playwright tests based on your staged changes.
 
 ---
@@ -9,7 +9,7 @@
 
 Every time you change a component, you ask:
 
-> *“Did I break something a user would notice?”*
+> *"Did I break something a user would notice?"*
 
 qagent answers that instantly.
 
@@ -33,7 +33,7 @@ When you stage a file, qagent runs a pipeline:
 
 ### 2. Route Mapping
 
-* Identifies which pages render the changed component
+* Traces which Next.js pages render the changed component via reverse import graph
 
 ### 3. Live Browser Probe
 
@@ -110,7 +110,7 @@ Not every change needs testing.
 | ------------------- | -------------------------------- |
 | Styling / imports   | Skip                             |
 | Props / types       | Lightweight test                 |
-| Logic / state / JSX | Full QA (probe + generate + run) |
+| Logic / state / UI  | Full QA (probe + generate + run) |
 
 ---
 
@@ -134,7 +134,7 @@ Not every change needs testing.
 * Routes
 * User flows
 * Auth patterns
-* UI conventions
+* UI and API conventions
 
 ```bash
 qagent skill
@@ -173,9 +173,8 @@ qagent models
 ## ⚙️ Configuration
 
 ```
-~/.qagentrc           # AI provider + model
-.qagent/config.json   # runtime config
-qagent-skill.md       # project context
+~/.qagentrc       # AI provider + model
+qagent-skill.md   # project context
 ```
 
 ---
@@ -190,7 +189,7 @@ src/
 ├── generator/    # AI prompt + test generation
 ├── evaluator/    # Test quality + refinement
 ├── runner/       # Playwright execution
-├── routes/       # Component → route mapping
+├── routes/       # File → route mapping
 ├── server/       # Dev server lifecycle
 ├── agent/        # Agent loops
 ├── context/      # Import graph context
@@ -249,24 +248,6 @@ bun test src/classifier
 
 ---
 
-## ⚠️ Limitations
-
-qagent tests front-end behavior only — rendering, interactions, validation, and error states.
-It does not test server logic, database writes, or auth flows. For backend coverage, pair it with a separate integration suite.
-
----
-
-## 📋 Requirements
-
-
-* Node.js 18+
-* Bun (dev)
-* React / Next.js app
-* Running dev server
-* Git
-
----
-
 ## 🎯 Philosophy
 
 qagent is not trying to replace QA.
@@ -276,8 +257,18 @@ It acts as:
 > **A fast, deterministic guardrail for user-facing regressions**
 
 * Tests what changed
-* Observes real behavior
+* Observes real browser behavior — UI rendering, interactions, and API consumption
 * Keeps dev velocity high
+
+---
+
+## 📋 Requirements
+
+* Node.js 18+
+* Bun (dev)
+* Next.js project (App Router or Pages Router)
+* A running dev server
+* Git
 
 ---
 

@@ -18,7 +18,7 @@ describe("loadConfig", () => {
     expect(config.ai.provider).toBe("ollama");
     expect(config.ai.model).toBe("qwen2.5-coder:7b");
     expect(config.classifier.skipTrivial).toBe(true);
-    expect(config.playwright.timeout).toBe(15_000);
+    expect(config.playwright.timeout).toBe(30_000);
   });
 
   it("throws when no provider/model configured", async () => {

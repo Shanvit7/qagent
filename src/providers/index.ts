@@ -140,7 +140,99 @@ export const envVarName = (provider: ProviderName): string => {
   return "";
 };
 
-// ─── Ollama provider ─────────────────────────────────────────────────────────
+// ─── Provider error classification ──────────────────────────────────────────
+
+export type ProviderErrorKind = "quota" | "rate_limit" | "auth" | "unknown";
+
+export class ProviderError extends Error {
+  constructor(
+    public readonly kind: ProviderErrorKind,
+    public readonly provider: ProviderName,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ProviderError";
+  }
+}
+
+/** Parse a non-OK response body and throw a typed ProviderError. */
+const throwProviderError = async (
+  res: Response,
+  provider: ProviderName,
+): Promise<never> => {
+  let body = "";
+  try { body = await res.text(); } catch { /* ignore */ }
+
+  // Try to extract structured error info
+  let code = "";
+  let message = "";
+  try {
+    const json = JSON.parse(body) as Record<string, unknown>;
+    if (provider === "openai") {
+      const err = (json["error"] ?? {}) as Record<string, string>;
+      code    = err["code"]    ?? err["type"] ?? "";
+      message = err["message"] ?? "";
+    } else if (provider === "anthropic") {
+      const err = (json["error"] ?? {}) as Record<string, string>;
+      code    = err["type"]    ?? "";
+      message = err["message"] ?? "";
+    }
+  } catch { /* non-JSON body */ }
+
+  // ── Quota exhausted (hard stop — billing action required) ────────────────
+  const isQuota =
+    res.status === 429 && (
+      code === "insufficient_quota" ||
+      code === "quota_exceeded" ||
+      /exceeded.*quota|quota.*exceeded/i.test(message)
+    ) ||
+    // Anthropic credit balance too low (comes as 400)
+    /credit balance is too low|out of credit/i.test(message);
+
+  if (isQuota) {
+    const hint =
+      provider === "openai"
+        ? "Top up your OpenAI credits at https://platform.openai.com/settings/organization/billing"
+        : "Top up your Anthropic credits at https://console.anthropic.com/settings/plans";
+    throw new ProviderError("quota", provider, `${provider} quota exhausted — ${hint}`);
+  }
+
+  // ── Rate limited (temporary — retry later) ───────────────────────────────
+  if (res.status === 429) {
+    throw new ProviderError(
+      "rate_limit",
+      provider,
+      `${provider} rate limit hit — wait a moment and try again`,
+    );
+  }
+
+  // ── Auth / key problem ───────────────────────────────────────────────────
+  if (res.status === 401 || res.status === 403) {
+    const envVar = provider === "openai" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY";
+    throw new ProviderError(
+      "auth",
+      provider,
+      `${provider} rejected the API key — check $${envVar} is valid`,
+    );
+  }
+
+  // ── Fallback ─────────────────────────────────────────────────────────────
+  throw new ProviderError(
+    "unknown",
+    provider,
+    `${provider} API error ${res.status}${message ? `: ${message}` : ""}`,
+  );
+};
+
+/**
+ * Format a caught error for display in the CLI.
+ * Returns a user-facing string — no stack traces, no raw JSON.
+ */
+export const formatProviderError = (err: unknown): string => {
+  if (err instanceof ProviderError) return err.message;
+  if (err instanceof Error) return err.message;
+  return String(err);
+};
 
 const ollamaGenerate = async (
   model: string,
@@ -236,7 +328,7 @@ const openaiGenerate = async (
     body: JSON.stringify(body),
   });
 
-  if (!res.ok) throw new Error(`OpenAI API error: ${res.status} ${await res.text()}`);
+  if (!res.ok) await throwProviderError(res, "openai");
   const data = (await res.json()) as {
     choices: { message: { content: string } }[];
     usage?: { prompt_tokens: number; completion_tokens: number };
@@ -287,7 +379,7 @@ const openaiChat = async (
     body: JSON.stringify(body),
   });
 
-  if (!res.ok) throw new Error(`OpenAI API error: ${res.status} ${await res.text()}`);
+  if (!res.ok) await throwProviderError(res, "openai");
 
   const data = (await res.json()) as {
     choices: {
@@ -342,7 +434,7 @@ const anthropicGenerate = async (
     body: JSON.stringify(body),
   });
 
-  if (!res.ok) throw new Error(`Anthropic API error: ${res.status} ${await res.text()}`);
+  if (!res.ok) await throwProviderError(res, "anthropic");
   const data = (await res.json()) as {
     content: { type: string; text?: string }[];
     usage?: { input_tokens: number; output_tokens: number };
@@ -429,7 +521,7 @@ const anthropicChat = async (
     body: JSON.stringify(body),
   });
 
-  if (!res.ok) throw new Error(`Anthropic API error: ${res.status} ${await res.text()}`);
+  if (!res.ok) await throwProviderError(res, "anthropic");
 
   const data = (await res.json()) as {
     content: { type: string; id?: string; text?: string; name?: string; input?: Record<string, string> }[];

@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { resolve, join } from "node:path";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { homedir } from "node:os";
 import type { QAgentConfig } from "./types";
 import type { ProviderName } from "@/providers/index";
@@ -7,32 +7,7 @@ import type { ProviderName } from "@/providers/index";
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
 const SKILL_FILE    = "qagent-skill.md";
-const CONFIG_FILE   = ".qagent/config.json";
 const RC_FILE       = `${homedir()}/.qagentrc`;
-
-// ─── Persisted config shape (.qagent/config.json) ────────────────────────────
-
-interface PersistedConfig {
-  skipTrivial?: boolean;
-  timeout?: number;
-  evaluator?: {
-    enabled?: boolean;
-    maxIterations?: number;
-    acceptThreshold?: number;
-  };
-  watch?: {
-    debounceMs?: number;
-    maxRoutes?: number;
-  };
-  server?: {
-    command?: string;
-    port?: number;
-    readyTimeout?: number;
-  };
-  browser?: {
-    headless?: boolean;
-  };
-}
 
 // ─── ~/.qagentrc  (provider=<name> + model=<name>) ──────────────────────────
 
@@ -110,26 +85,6 @@ export const writeIterations = (n: number): void => {
   writeRcValue("iterations", String(n));
 };
 
-// ─── .qagent/config.json ─────────────────────────────────────────────────────
-
-const readPersistedConfig = (cwd: string): PersistedConfig => {
-  const configPath = resolve(cwd, CONFIG_FILE);
-  if (!existsSync(configPath)) return {};
-  try {
-    return JSON.parse(readFileSync(configPath, "utf8")) as PersistedConfig;
-  } catch {
-    return {};
-  }
-};
-
-export const writePersistedConfig = (cwd: string, config: PersistedConfig): void => {
-  const configPath = resolve(cwd, CONFIG_FILE);
-  mkdirSync(join(cwd, ".qagent"), { recursive: true });
-  writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf8");
-};
-
-// ─── Defaults ─────────────────────────────────────────────────────────────────
-
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export const loadConfig = (cwd: string = process.cwd()): QAgentConfig => {
@@ -142,7 +97,6 @@ export const loadConfig = (cwd: string = process.cwd()): QAgentConfig => {
     );
   }
 
-  const persisted = readPersistedConfig(cwd);
   const skillPath = resolve(cwd, SKILL_FILE);
 
   let skillContext: string | undefined;
@@ -156,28 +110,26 @@ export const loadConfig = (cwd: string = process.cwd()): QAgentConfig => {
   return {
     ai: { provider, model },
     playwright: {
-      timeout: persisted.timeout ?? 15_000,
+      timeout: 30_000,
       server: {
         autoDetect: true,
-        command: persisted.server?.command,
-        port: persisted.server?.port,
-        readyTimeout: persisted.server?.readyTimeout ?? 30_000,
+        readyTimeout: 30_000,
       },
       browser: {
-        headless: persisted.browser?.headless ?? true,
+        headless: true,
         viewport: { width: 1280, height: 720 },
         screenshotDir: ".qagent/screenshots",
       },
     },
     watch: {
-      debounceMs: persisted.watch?.debounceMs ?? 300,
-      maxRoutes: persisted.watch?.maxRoutes ?? 3,
+      debounceMs: 300,
+      maxRoutes: 3,
     },
-    classifier: { skipTrivial: persisted.skipTrivial ?? true },
+    classifier: { skipTrivial: true },
     evaluator: {
-      enabled: persisted.evaluator?.enabled ?? true,
+      enabled: true,
       maxIterations: readIterations(),
-      acceptThreshold: persisted.evaluator?.acceptThreshold ?? 7,
+      acceptThreshold: 7,
     },
     ...(skillContext ? { skillContext } : {}),
   };
