@@ -1,12 +1,11 @@
 {
-  "name": "qagent",
+  "name": "@shanvit7/qagent",
   "version": "0.1.0",
   "description": "Behavioral regression tests for every staged change — AI probes your live app and generates focused e2e tests that verify user flows didn't break",
   "type": "module",
   "bin": {
-    "qagent": "./dist/cli/index.js"
+    "qagent": "dist/cli/index.js"
   },
-  "module": "./dist/cli/index.js",
   "types": "./dist/cli/index.d.ts",
   "exports": {
     ".": {
