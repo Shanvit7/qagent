@@ -15,6 +15,7 @@ import { spawn } from "node:child_process";
 import { writeFileSync, unlinkSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
+import { loadProjectEnv } from "@/server/index";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -346,6 +347,9 @@ export const probeRoute = async (
         cwd,
         stdio: ["ignore", "pipe", "pipe"],
         timeout: timeoutMs * PROBE_VIEWPORTS.length + 5_000,
+        // Inject target project's .env so the browser (and any node-level
+        // Playwright config) sees the same environment as the dev server.
+        env: { ...process.env, ...loadProjectEnv(cwd) },
       });
 
       child.on("exit", (code) => {

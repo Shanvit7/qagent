@@ -103,7 +103,7 @@ Each file owns exactly one concern. If a file grows past ~300 lines or has two u
 | `classifier/index.ts` | Change classification heuristics         |
 | `analyzer/index.ts` | ts-morph AST analysis                     |
 | `generator/index.ts` | Prompt building and AI client calls      |
-| `runner/index.ts` | Vitest subprocess management               |
+| `runner/index.ts` | Playwright subprocess management |
 | `git/staged.ts` | Reading git staged files and diffs           |
 | `git/staged.ts` | Reading git staged files and diffs (primary) |
 | `cli/commands/*.ts` | One file per CLI command                  |
@@ -299,42 +299,45 @@ Use `vi.mock()` from Vitest for module mocking. No sinon, no jest-mock, no third
 
 qagent generates **Playwright browser tests** against a live dev server. Generated tests must:
 
-- Import from `@playwright/test` only — no jsdom, no RTL, no React test utils
+- Import from `@playwright/test` only — no jsdom, no RTL, no React test utils, no mocks of any kind
 - Use accessible queries: `page.getByRole()`, `page.getByText()`, `page.getByLabel()`
 - Never use CSS selectors when accessible queries work
-- Never use mocks of any kind — the app runs as-is
 - Always include a smoke test (page loads, no crash, key content visible)
-- Use `page.setViewportSize()` for responsive tests
+- Use `page.setViewportSize()` before `page.goto()` for viewport-specific tests
+- Assert user-observable outcomes, not internal state or DOM attributes
 
 ---
 
 ## 7. Terminal Output Conventions
 
-All user-facing terminal output uses **chalk** for color and **ora** for spinners. Raw `console.log` is acceptable for simple status lines; use it consistently.
+All user-facing terminal output uses **`@clack/prompts`** (`p.log`, `p.spinner`, `p.intro`, `p.outro`) and **`picocolors`** for color. Do not use `chalk` or `ora` — they are not in the dependencies.
 
 | Pattern              | Usage                                      |
 |---------------------|--------------------------------------------|
-| `chalk.bold.cyan`   | Section headers, command names              |
-| `chalk.green`       | Success messages                            |
-| `chalk.red`         | Failures, errors                            |
-| `chalk.yellow`      | Warnings, skipped items                     |
-| `chalk.dim`         | Secondary info, hints, raw output           |
-| `ora(…).start()`    | Any operation that takes >100ms             |
-| `spinner.succeed()` | Operation completed successfully            |
-| `spinner.fail()`    | Operation failed                            |
-| `spinner.warn()`    | Non-critical issue (e.g., AI unavailable)   |
+| `color.cyan`        | Section headers, command names              |
+| `color.green`       | Success messages                            |
+| `color.red`         | Failures, errors                            |
+| `color.yellow`      | Warnings, skipped items                     |
+| `color.dim`         | Secondary info, hints, raw output           |
+| `p.spinner()`       | Any operation that takes >100ms             |
+| `p.log.success()`   | Operation completed successfully            |
+| `p.log.error()`     | Operation failed                            |
+| `p.log.warn()`      | Non-critical issue (e.g., AI unavailable)   |
+| `p.intro()`         | Command entry banner                        |
+| `p.outro()`         | Command exit message                        |
 
 ---
 
-## 8. AI / Ollama Integration
+## 8. AI / Provider Integration
 
-- **Ollama is the only AI provider.** No OpenAI, no other providers.
-- Ollama is called via the `ollama` npm SDK (`new Ollama.Ollama()`).
-- The model is never hardcoded in source — always read from `config.ai.model`.
+- **Ollama, OpenAI, and Anthropic are equal first-class providers.** The user picks one at `qagent init` or via `qagent models`.
+- All provider calls go through `src/providers/index.ts` — no direct SDK imports elsewhere.
+- The model is never hardcoded in logic — always read from `config.ai.model`.
 - Prompts live in `generator/index.ts` — the `buildPrompt` function. Keep them clean, specific, and testable.
 - Temperature for test generation: **0.2** (deterministic). Temperature for explanations: **0.3**.
 - Always extract the code block from AI output with `extractCodeBlock` before writing tests to disk.
-- If AI is unavailable: warn and skip — tests on staged files are best-effort.
+- AI-generated test code passes through `src/sanitizer/index.ts` before being executed — deterministic transforms that catch known-bad patterns.
+- If AI is unavailable: warn and skip — tests on staged files are best-effort. Never `process.exit(1)` on provider failure.
 
 ---
 
@@ -355,7 +358,7 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/):
 | `docs`     | README, AGENT.md, comments               |
 | `chore`    | Config, deps, build                      |
 
-**Scopes:** `cli`, `classifier`, `analyzer`, `generator`, `runner`, `git`, `config`
+**Scopes:** `cli`, `classifier`, `analyzer`, `generator`, `sanitizer`, `evaluator`, `runner`, `probe`, `server`, `git`, `config`, `agent`, `providers`, `routes`, `reporter`
 
 **Examples:**
 ```

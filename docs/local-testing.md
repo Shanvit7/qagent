@@ -1,6 +1,6 @@
 # Local Testing Guide
 
-How to build, link, and test qagent locally — including installing it in one of your React or Next.js projects before publishing to npm.
+How to build, link, and test qagent locally — including installing it in a Next.js project before publishing to npm.
 
 ---
 
@@ -14,256 +14,174 @@ How to build, link, and test qagent locally — including installing it in one o
 | Typecheck | `bun run typecheck` |
 | Full check (CI equivalent) | `bun run check` |
 | Link globally | `npm link` (in qagent dir) |
-| Install in a React/Next.js project | `npm link qagent` (in project dir) |
-| Unlink from a project | `npm unlink qagent` (in project dir) |
+| Install in a target project | `npm link qagent` (in target dir) |
+| Unlink from a project | `npm unlink qagent` (in target dir) |
 | Unlink globally | `npm unlink -g qagent` (anywhere) |
 
 ---
 
 ## Method 1: Run Directly via Bun (Fastest)
 
-During development, you don't need to build at all. Bun can run TypeScript source directly:
+During development, you don't need to build. Bun runs TypeScript source directly:
 
 ```bash
 cd /path/to/qagent
 
-# Run the default command (init wizard)
-bun run dev
-
-# Run a specific subcommand
-bun run dev -- run
+bun run dev              # runs src/cli/index.ts (init wizard)
+bun run dev -- run       # pass subcommands after --
+bun run dev -- watch
 bun run dev -- status
 bun run dev -- explain
 bun run dev -- models
+bun run dev -- config iterations 6
 ```
 
-This executes `src/cli/index.ts` directly. Fast iteration, no build step.
-
-**Limitation:** This only works from within the qagent directory. To test qagent inside a React or Next.js project, use Method 2 or 3.
+**Limitation:** Only works from within the qagent directory. For end-to-end testing inside a real Next.js project, use Method 2 or 3.
 
 ---
 
 ## Method 2: npm link (Recommended for End-to-End Testing)
 
-This creates a global symlink so you can run `qagent` as a real CLI command in any React or Next.js project.
+Creates a global symlink so you can run `qagent` as a real CLI in any target project.
 
-### Step 1: Build qagent
+### Step 1: Build
 
 ```bash
 cd /path/to/qagent
 bun run build
 ```
 
-This produces `dist/cli/index.js` — the actual binary that npm would publish.
+Produces `dist/cli/index.js` — the actual binary.
 
 ### Step 2: Link Globally
 
 ```bash
-cd /path/to/qagent
 npm link
 ```
 
-This registers the `qagent` binary globally. You can now run `qagent` from anywhere.
-
-### Step 3: Link Into Your React/Next.js Project
+### Step 3: Link Into Your Target Project
 
 ```bash
-cd /path/to/your-react-or-nextjs-project
+cd /path/to/your-nextjs-project
 npm link qagent
 ```
 
-This creates a symlink in your project's `node_modules/qagent` pointing to your local qagent build. The target project must be a React or Next.js project — qagent analyzes `.tsx`/`.ts` components, hooks, server actions, and API routes specific to these frameworks.
-
-### Step 4: Test It
+### Step 4: Test
 
 ```bash
-cd /path/to/your-react-or-nextjs-project
+cd /path/to/your-nextjs-project
 
-# Run the setup wizard
-qagent
+qagent               # setup wizard
+qagent status        # check provider + Chromium
+qagent watch         # background CI — run on every git add
 
-# Or run QA directly (stage some React/Next.js files first)
-git add src/MyComponent.tsx
-qagent run
+# Stage something and watch it run
+echo "// touch" >> src/components/Header.tsx
+git add src/components/Header.tsx
+# → qagent detects the stage and fires
 
-# Check status
-qagent status
-
-# Other commands
-qagent lens
-qagent models
-qagent explain
-qagent skill
+qagent run           # manual single run
+qagent explain       # explain last failure
+qagent config iterations 6   # bump refinement loop budget
 ```
 
-### Step 5: Iterate
-
-When you make changes to qagent:
+### Step 5: Rebuild After Changes
 
 ```bash
 cd /path/to/qagent
 bun run build              # rebuild
-# Changes are immediately available in your linked React/Next.js project — no re-link needed
+# Link is live — target project picks up changes immediately
 ```
 
-For continuous rebuilds:
+Continuous rebuild:
 
 ```bash
-bun run build:watch        # tsup watches for changes and rebuilds automatically
+bun run build:watch
 ```
 
 ### Cleanup
 
-When you're done testing:
-
 ```bash
-# Remove the link from your project
-cd /path/to/your-react-or-nextjs-project
+cd /path/to/your-nextjs-project
 npm unlink qagent
 
-# Remove the global link
-npm unlink -g qagent
+npm unlink -g qagent   # anywhere
 ```
 
 ---
 
-## Method 3: Install from Local Path (Simulates Real Install) [Recommended]
-
-This installs qagent from the local filesystem, similar to how a user would install from npm — but from your local build.
-
-### Step 1: Build and Pack
+## Method 3: Install from Tarball (Simulates Real npm Install)
 
 ```bash
 cd /path/to/qagent
 bun run build
-npm pack                   # creates qagent-0.1.0.tgz
+npm pack               # creates qagent-x.y.z.tgz
 ```
 
-### Step 2: Install the Tarball
-
-Install the tarball in your React or Next.js project using whichever package manager the project uses:
-
 ```bash
-cd /path/to/your-react-or-nextjs-project
+cd /path/to/your-nextjs-project
 
 # npm
-npm install --save-dev /path/to/qagent/qagent-0.1.0.tgz
+npm install --save-dev /path/to/qagent/qagent-x.y.z.tgz
 
 # yarn
-yarn add --dev /path/to/qagent/qagent-0.1.0.tgz
+yarn add --dev /path/to/qagent/qagent-x.y.z.tgz
 
 # pnpm
-pnpm add -D /path/to/qagent/qagent-0.1.0.tgz
+pnpm add -D /path/to/qagent/qagent-x.y.z.tgz
 
 # bun
-bun add -d /path/to/qagent/qagent-0.1.0.tgz
+bun add -d /path/to/qagent/qagent-x.y.z.tgz
 ```
 
-This installs qagent exactly as it would from the npm registry — copies files from the `dist/` directory (per the `files` field in `package.json`), sets up the bin link, etc. Run this inside a React or Next.js project to get meaningful results.
-
-### Step 3: Test
+Then run via the package manager's exec tool:
 
 ```bash
-cd /path/to/your-react-or-nextjs-project
-
-# npm / yarn / pnpm
-npx qagent               # runs the setup wizard
-npx qagent run            # runs QA on staged files
-npx qagent status         # checks setup
-
-# pnpm (alternative)
-pnpx qagent
-pnpx qagent run
-
-# bun
-bunx qagent
-bunx qagent run
+npx qagent           # npm / yarn / pnpm
+bunx qagent          # bun
 ```
 
-### Step 4: Update After Changes
-
-Rebuild, repack, and reinstall:
+Reinstall after changes:
 
 ```bash
-cd /path/to/qagent
-bun run build
-npm pack
-
-cd /path/to/your-react-or-nextjs-project
-
-# npm
-npm install --save-dev /path/to/qagent/qagent-0.1.0.tgz
-
-# yarn
-yarn add --dev /path/to/qagent/qagent-0.1.0.tgz
-
-# pnpm
-pnpm add -D /path/to/qagent/qagent-0.1.0.tgz
-
-# bun
-bun add -d /path/to/qagent/qagent-0.1.0.tgz
-```
-
-### Cleanup
-
-To remove qagent from your project after testing:
-
-```bash
-# npm
-npm uninstall qagent
-
-# yarn
-yarn remove qagent
-
-# pnpm
-pnpm remove qagent
-
-# bun
-bun remove qagent
+cd /path/to/qagent && bun run build && npm pack
+cd /path/to/your-nextjs-project && npm install --save-dev /path/to/qagent/qagent-x.y.z.tgz
 ```
 
 ---
 
-## Method 4: Direct Path Install (Quickest Link Alternative)
+## Method 4: Direct Path Install
 
 ```bash
-cd /path/to/your-react-or-nextjs-project
+cd /path/to/your-nextjs-project
 
-# npm
-npm install --save-dev /path/to/qagent
-
-# yarn
-yarn add --dev /path/to/qagent
-
-# pnpm
-pnpm add -D /path/to/qagent
-
-# bun
-bun add -d /path/to/qagent
+npm install --save-dev /path/to/qagent    # npm
+yarn add --dev /path/to/qagent            # yarn
+pnpm add -D /path/to/qagent              # pnpm
+bun add -d /path/to/qagent               # bun
 ```
 
-This installs directly from the source directory into your React or Next.js project. Note: behavior varies across package managers — some create a symlink, others copy files. Prefer Method 2 or 3 for reliability.
+Behavior varies by package manager (some symlink, others copy). Prefer Method 2 for reliability.
 
 ---
 
 ## Running Unit Tests
 
-qagent's own test suite:
+qagent's own test suite (unit tests of classifier, analyzer, runner, etc.):
 
 ```bash
 cd /path/to/qagent
 
-bun run test               # run all tests once
-bun run test:watch         # watch mode — re-runs on changes
+bun run test           # run all tests once
+bun run test:watch     # watch mode — re-runs on changes
 ```
 
-### Test Configuration
+### Test Stack
 
 - **Framework:** Vitest
-- **Environment:** jsdom (for React Testing Library compatibility)
-- **Setup file:** `src/test-setup.ts` (imports `@testing-library/jest-dom`)
-- **Pattern:** `src/**/*.test.ts` and `src/**/*.test.tsx`
-- **Coverage:** v8 provider, reports in `coverage/`
+- **Environment:** node (qagent's own tests are pure TypeScript, no browser)
+- **Pattern:** `src/**/*.test.ts`
+- **Location:** Co-located with source files
 
 ### Running Specific Tests
 
@@ -271,123 +189,156 @@ bun run test:watch         # watch mode — re-runs on changes
 # Run tests matching a pattern
 bunx vitest run src/classifier
 
-# Run a single test file
+# Run a single file
 bunx vitest run src/classifier/index.test.ts
 
-# Run with coverage
+# With coverage
 bunx vitest run --coverage
 ```
+
+> **Note:** qagent's *own* unit tests use Vitest. The tests it *generates* for your project use Playwright. These are different things.
 
 ---
 
 ## Testing Stage-Based Triggering
 
-qagent runs on staged files — either automatically (watch mode) or manually.
+qagent operates on staged files — either automatically (watch mode) or manually.
 
-### Auto mode — `qagent watch`
+### Watch mode
 
 ```bash
-cd /path/to/your-react-or-nextjs-project
+cd /path/to/your-nextjs-project
 
-# Start the watcher in a separate terminal
+# Terminal 1 — start watcher
 qagent watch
 
-# In your normal terminal, stage a file
-echo "// test" >> src/App.tsx
-git add src/App.tsx
-# → qagent detects the stage event and runs QA in the background
-# → results appear in the watch terminal when ready
+# Terminal 2 — make and stage a change
+echo "// touch" >> src/components/Button.tsx
+git add src/components/Button.tsx
+# → qagent detects the stage event and runs QA
+# → results appear in Terminal 1
 ```
 
-### Manual mode — `qagent run`
+### Manual run
 
 ```bash
-echo "// test" >> src/App.tsx
-git add src/App.tsx
+git add src/components/Button.tsx
 qagent run
-# → runs QA on currently staged files, exits when done
+# → runs and exits
 ```
 
-Both modes operate purely on staged files. No commits are involved.
+### Testing env-based features
+
+To verify env loading works correctly:
+
+```bash
+# In your target project, add a variable to .env
+echo "MY_TEST_VAR=hello" >> .env
+
+# In watch mode, changing .env triggers automatic dev server restart:
+# ⚠  .env changed — restarting dev server with new env…
+# ✓ Dev server restarted at http://localhost:3000 with updated env
+
+# Run a manual probe to verify the page renders with the new env:
+qagent run
+```
 
 ---
 
-## Testing with Different Models
+## Testing with Different Providers and Models
 
-qagent uses Ollama. To test with different models:
+qagent supports Ollama, OpenAI, and Anthropic — all equal choices. Configure once at `qagent init`, switch anytime with `qagent models`.
 
 ```bash
-# Pull a model
-ollama pull qwen2.5-coder:7b
+# Ollama — pull a model first
+ollama pull qwen2.5-coder:14b
 
-# Set model via env var (overrides all config)
+# Override active model via env var (highest priority, any provider)
 QAGENT_MODEL=qwen2.5-coder:14b qagent run
 
-# Or set interactively (writes to ~/.qagentrc)
+# Interactive picker — writes to ~/.qagentrc
 qagent models
 
-# Or edit directly
-echo "model=codellama:7b" > ~/.qagentrc
+# Edit directly
+echo '{"provider":"ollama","model":"qwen2.5-coder:14b"}' > ~/.qagentrc
+echo '{"provider":"openai","model":"gpt-4o"}' > ~/.qagentrc
+echo '{"provider":"anthropic","model":"claude-sonnet-4-20250514"}' > ~/.qagentrc
 ```
 
 ---
 
-## Testing Without Ollama
+## Testing Without a Running AI
 
-If you need to test the non-AI parts of qagent (classifier, analyzer, scanner, etc.), you can:
+If you want to test non-AI parts (classifier, analyzer, scanner, probe, runner):
 
-1. **Unit tests** — mock the Ollama calls:
+1. **Unit tests** — mock the provider calls:
    ```bash
    bun run test
    ```
 
-2. **Run the CLI** — qagent gracefully handles Ollama being unavailable:
+2. **CLI** — qagent gracefully skips AI steps when unavailable:
    ```bash
    qagent run
    # → AI unavailable — skipping (connection refused)
    ```
 
-The classifier, analyzer, scanner, and context modules all work without Ollama. Only `generator/`, `agent/`, and `explain` require a running Ollama instance.
+The probe, classifier, analyzer, scanner, and route mapping all function without any AI provider. Only `generator/`, `evaluator/`, and `explain` require a live provider.
 
 ---
 
 ## Troubleshooting
 
-### `qagent: command not found` After npm link
-
-Make sure you ran `npm link` (not `bun link`) and that your npm global bin is in your `PATH`:
+### `qagent: command not found` after npm link
 
 ```bash
-npm config get prefix     # shows npm's global prefix
-# Add <prefix>/bin to your PATH if not already there
+npm config get prefix     # shows global prefix, e.g. /usr/local
+# Add <prefix>/bin to PATH
+export PATH="$(npm config get prefix)/bin:$PATH"
 ```
 
-### Changes Not Reflected After Rebuild
+### Changes not reflected after rebuild
 
-With `npm link`, the symlink points to your local `dist/` directory. Make sure you ran `bun run build` after making changes. Use `bun run build:watch` for automatic rebuilds.
+With `npm link`, the symlink points to your local `dist/`. Make sure you ran `bun run build`. Use `bun run build:watch` for continuous rebuilds.
 
-
-### Ollama Connection Issues
+### Ollama not responding
 
 ```bash
-ollama serve              # ensure the server is running
-curl http://localhost:11434/api/tags   # verify it responds
-qagent status             # qagent's connectivity check
+ollama serve                                    # start the server
+curl http://localhost:11434/api/tags            # verify response
+qagent status                                   # qagent's own check
 ```
 
-### Stale `.qagent/` Artifacts
-
-If tests behave unexpectedly, clear the local cache:
+### Chromium not installed in target project
 
 ```bash
-rm -rf .qagent/tmp/       # temp test files (normally auto-cleaned)
-rm -rf .qagent/reports/   # historical reports
-rm .qagent/last-failure.txt
+cd /path/to/your-nextjs-project
+npx playwright install chromium
 ```
-### TypeScript Errors During Build
+
+qagent also auto-prompts for this during preflight.
+
+### Env variables not picked up
+
+qagent reads env files from the **target project's directory** (where you run `qagent`), not from qagent's own directory.
+
+In watch mode, changing any `.env*` file automatically restarts the dev server. You'll see:
+```
+⚠  .env.local changed — restarting dev server with new env…
+✓ Dev server restarted at http://localhost:3000 with updated env
+```
+
+### Stale `.qagent/` artifacts
 
 ```bash
-bun run typecheck         # see all errors
-# tsconfig.json is strict — no any, exactOptionalPropertyTypes, etc.
+rm -rf .qagent/tmp/          # temp test files (normally auto-cleaned)
+rm -rf .qagent/screenshots/  # failure screenshots
+rm .qagent/last-failure.txt  # last failure report
 ```
 
+### TypeScript errors during build
+
+```bash
+bun run typecheck    # shows all errors
+```
+
+The config enforces strict mode: no `any`, `exactOptionalPropertyTypes`, etc.

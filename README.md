@@ -1,74 +1,94 @@
 # qagent
 
-> **Change-aware E2E testing for Next.js**
-> Automatically generates and runs Playwright tests based on your staged changes.
+> **Change-aware E2E testing for Next.js**  
+> Automatically generates and runs Playwright tests based on your staged changes — in a real browser.
 
 ---
 
-## 🚀 Why qagent?
+## Why qagent?
 
 Every time you change a component, you ask:
 
 > *"Did I break something a user would notice?"*
 
-qagent answers that instantly.
+qagent answers that automatically — before you commit.
 
-* 🧠 Understands your code changes
-* 🌐 Observes real browser behavior
-* 🧪 Generates meaningful Playwright tests
-* ⚡ Runs them before you commit
+- 🧠 Understands your code changes (AST diff, not file diffs)
+- 🌐 Probes real browser behavior at desktop and mobile viewports
+- 🧪 Generates meaningful Playwright tests from what's actually accessible
+- ⚡ Runs them, refines failures, and reports results
+- 🔁 Background CI in watch mode — zero blocking, zero interruption
 
 Built for fast-moving teams without dedicated QA.
 
 ---
 
-## ⚙️ How it works
+## How it works
 
-When you stage a file, qagent runs a pipeline:
+When you stage a file (`git add`), qagent runs this pipeline:
 
 ### 1. Diff Classification
-
-* Skips irrelevant changes (CSS, imports)
-* Focuses only on behavioral impact
+- Skips irrelevant changes (CSS-only, import reorder)
+- Lightweight test for prop/type changes
+- Full QA for logic, state, hooks, and markup changes
+- Zero AI cost at this step
 
 ### 2. Route Mapping
+- Traces which Next.js pages render the changed component
+- Reverse import graph built once, O(1) lookup per file
+- Layout components resolve to `/` only
 
-* Traces which Next.js pages render the changed component via reverse import graph
+### 3. Environment Load
+- Reads `.env`, `.env.local`, `.env.development`, `.env.development.local` from the target project
+- Injected into both the dev server process and the probe process
+- In watch mode: automatically restarts the dev server if any `.env*` file changes
 
-### 3. Live Browser Probe
+### 4. Live Browser Probe
+- Opens real Chromium at the target route
+- Desktop (1280×800) and mobile (390×844) viewports
+- Captures: accessibility tree, interactive elements, hidden elements, console errors
+- Clicks toggle-like buttons and records before/after state (so generated tests never have stale locators)
+- Probe result is the ground truth fed into the generation prompt — no static JSX heuristics
 
-* Opens real Chromium (desktop + mobile)
-* Reads accessibility tree
-* Interacts with UI (clicks, toggles, flows)
+### 5. Test Generation
+- AI writes behavioral Playwright tests from the probe snapshot + source context
+- Framed as user goals ("user can toggle mobile menu"), not component inspection
+- Sanitizer applies deterministic fixes to known AI-generated bad patterns before running
 
-### 4. Test Generation
-
-* AI generates Playwright tests based on observed behavior
-
-### 5. Execution + Refinement
-
-* Runs tests in browser
-* Fixes failures iteratively
+### 6. Execution + Refinement Loop
+- Tests run in real Chromium via `npx playwright test --reporter json`
+- On failure: runtime errors + probe context fed back to AI for targeted fix
+- Tracks best score across iterations; up to 4 refinement attempts (configurable)
+- Parallel execution across multiple changed files
 
 ---
 
-## 🧩 Quick Start
+## Quick Start
 
 ```bash
-npx qagent@latest   # setup (AI provider, Chromium)
-qagent watch        # run on every git add
+npx qagent@latest   # setup wizard — AI provider, Chromium check
+qagent watch        # run QA on every git add, in the background
 ```
 
-### Example Output
+### Manual run
+
+```bash
+git add src/MyComponent.tsx
+qagent run
+```
+
+---
+
+## Example Output
 
 ```
 $ qagent watch
 
-◆  qagent
-◇  ✓ gpt-4o (openai) · Chromium ready
+◆  qagent watch
+◇  ✓ qwen2.5-coder:7b (ollama) · Chromium ready
 ◇  Route map: 21 routes
 ◇  Dev server ready — http://localhost:3000
-◇  Watching for staged changes...
+◇  Watching for staged changes... (Ctrl+C to stop)
 
   [10:14:32] header.tsx
 
@@ -82,7 +102,7 @@ $ qagent watch
 
 ---
 
-## 🧪 Example Generated Test
+## Example Generated Test
 
 ```ts
 test("user can toggle the mobile menu", async ({ page }) => {
@@ -92,6 +112,7 @@ test("user can toggle the mobile menu", async ({ page }) => {
   const openMenu = page.getByRole("button", { name: "Open menu" });
   await openMenu.click();
 
+  // Probe recorded that the button name changes to "Close menu" after click
   const closeMenu = page.getByRole("button", { name: "Close menu" });
   await expect(closeMenu).toBeVisible();
 
@@ -102,57 +123,59 @@ test("user can toggle the mobile menu", async ({ page }) => {
 
 ---
 
-## 🧠 Smart Classification
+## Smart Classification
 
-Not every change needs testing.
-
-| Change Type         | Action                           |
-| ------------------- | -------------------------------- |
-| Styling / imports   | Skip                             |
-| Props / types       | Lightweight test                 |
-| Logic / state / UI  | Full QA (probe + generate + run) |
-
----
-
-## 📦 Commands
-
-| Command          | Description                        |
-| ---------------- | ---------------------------------- |
-| `qagent watch`   | Run continuously on staged changes |
-| `qagent run`     | Run once on staged files           |
-| `qagent explain` | Explain last failure               |
-| `qagent skill`   | Generate project context file      |
-| `qagent models`  | Switch AI provider                 |
-| `qagent status`  | Check setup                        |
+| Change Type                   | Decision    | Rationale                                   |
+|-------------------------------|-------------|---------------------------------------------|
+| CSS / Tailwind classes only   | **SKIP**    | Cosmetic — no behavioral impact              |
+| Import reorder                | **SKIP**    | No runtime effect                            |
+| Prop or type change           | **LIGHTWEIGHT** | Smoke test — verify component renders    |
+| JSX markup change             | **LIGHTWEIGHT** | Minor structural change                  |
+| Function body, hooks, state   | **FULL_QA** | Logic changed — full probe + generate needed |
+| Server action                 | **FULL_QA** + security scan | Form submission path changed  |
 
 ---
 
-## 🧾 Skill File (Project Context)
+## Commands
 
-`qagent-skill.md` improves accuracy by defining:
+| Command                         | Description                                       |
+|---------------------------------|---------------------------------------------------|
+| `qagent watch`                  | Background CI — runs on every `git add`           |
+| `qagent run`                    | Run once on currently staged files, then exit     |
+| `qagent explain`                | AI explains the last test failure                 |
+| `qagent hook`                   | Enable/disable optional pre-commit blocking gate  |
+| `qagent config iterations <n>`  | Set max refinement loop iterations (1–8)          |
+| `qagent models`                 | Switch AI provider / model interactively          |
+| `qagent skill`                  | Generate project context file (`qagent-skill.md`) |
+| `qagent status`                 | Check setup — provider, Chromium, config          |
 
-* Routes
-* User flows
-* Auth patterns
-* UI and API conventions
+---
+
+## Skill File
+
+`qagent-skill.md` improves generation accuracy by telling the AI about your project:
+
+- Routes and their purpose
+- User flows and auth patterns
+- UI conventions (component library, design system)
+- API patterns
 
 ```bash
-qagent skill
+qagent skill   # scaffolds the file, then let Cursor/Claude fill it in
 ```
 
-Then let an AI (Cursor / Claude) fill it based on your codebase.
-
-> Without this: qagent guesses
-> With this: qagent understands
+> Without this: qagent infers from source and probe.  
+> With this: qagent understands your domain.
 
 ---
 
-## 🤖 AI Providers
+## AI Providers
 
-### Local (recommended)
+### Local (recommended — free, private)
 
 ```bash
-ollama pull qwen2.5-coder:14b
+ollama pull qwen2.5-coder:7b    # fast, private
+ollama pull qwen2.5-coder:14b   # higher quality
 ```
 
 ### Cloud
@@ -162,116 +185,85 @@ export OPENAI_API_KEY=sk-...
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-Switch anytime:
+All three providers — Ollama, OpenAI, Anthropic. Select one during `qagent init` or switch anytime:
 
 ```bash
 qagent models
 ```
 
----
-
-## ⚙️ Configuration
-
-```
-~/.qagentrc       # AI provider + model
-qagent-skill.md   # project context
-```
+The selected provider and model are used for all AI calls (generation, evaluation, explain). There is no fallback — whichever you configure is what runs.
 
 ---
 
-## 🏗️ Architecture
+## Configuration
+
+| File                    | Purpose                                      |
+|-------------------------|----------------------------------------------|
+| `~/.qagentrc`           | Global AI provider + model                   |
+| `.qagent/config.json`   | Per-project overrides                        |
+| `qagent-skill.md`       | Project context for the AI                   |
+| `.env` / `.env.local`   | Target project env — auto-loaded by qagent   |
+
+---
+
+## Architecture
 
 ```
 src/
-├── probe/        # Browser interaction + a11y extraction
-├── analyzer/     # Source code analysis
-├── classifier/   # Diff → test decision
-├── generator/    # AI prompt + test generation
-├── evaluator/    # Test quality + refinement
-├── runner/       # Playwright execution
-├── routes/       # File → route mapping
-├── server/       # Dev server lifecycle
-├── agent/        # Agent loops
-├── context/      # Import graph context
-├── scanner/      # Project detection
-├── feedback/     # Failure memory
-├── providers/    # AI integrations
-├── reporter/     # CLI output
-└── cli/          # Commands
+├── probe/        # Real browser → accessibility tree + interaction ground truth
+├── analyzer/     # ts-morph AST analysis (component type, props, security)
+├── classifier/   # AST diff → SKIP / LIGHTWEIGHT / FULL_QA
+├── generator/    # Prompt construction + AI provider calls
+├── sanitizer/    # Deterministic post-generation fixes on AI output
+├── evaluator/    # Behavioral grading + refinement prompt builder
+├── runner/       # Spawns `npx playwright test`, parses JSON results
+├── routes/       # Reverse import graph: file → route(s)
+├── server/       # Dev server lifecycle + env loading
+├── agent/        # Agentic loops (security analysis)
+├── context/      # Per-file import graph for prompt context
+├── feedback/     # Cross-run failure persistence (clears on pass)
+├── scanner/      # Project detection (Next.js router, structure)
+├── preflight/    # Pre-run checks: model, API key, Chromium
+├── providers/    # Unified AI: Ollama, OpenAI, Anthropic
+├── reporter/     # Terminal output + markdown reports
+├── config/       # Config loading, types, defaults
+├── skill/        # Skill file template
+└── cli/          # Commands: watch, run, explain, hook, config, models, skill, status
 ```
 
 ---
 
-## 🛠️ Development
-
-### Setup
+## Development
 
 ```bash
 git clone https://github.com/Shanvit7/qagent.git
 cd qagent
 bun install
-bun run check
+bun run check        # typecheck + unit tests
 ```
-
-### Run locally
 
 ```bash
-bun run dev
-bun run dev -- run
-bun run dev -- status
+bun run dev          # run CLI from source (no build needed)
+bun run dev -- run   # pass subcommands
+bun run build        # compile to dist/
+bun run test         # vitest unit tests
+bun run typecheck    # tsc --noEmit
 ```
 
-### Build & Test
-
-```bash
-bun run build
-bun run test
-bun run typecheck
-```
+See [docs/local-testing.md](docs/local-testing.md) for full local + integration testing guide.
 
 ---
 
-## 🧪 Testing
+## Requirements
 
-* Tests are co-located with modules
-* Run all tests:
-
-```bash
-bun test
-```
-
-* Run specific module:
-
-```bash
-bun test src/classifier
-```
+- Node.js 18+
+- Bun (for development)
+- Next.js project (App Router or Pages Router)
+- `@playwright/test` installed in the target project
+- Ollama, OpenAI key, or Anthropic key (at least one)
 
 ---
 
-## 🎯 Philosophy
-
-qagent is not trying to replace QA.
-
-It acts as:
-
-> **A fast, deterministic guardrail for user-facing regressions**
-
-* Tests what changed
-* Observes real browser behavior — UI rendering, interactions, and API consumption
-* Keeps dev velocity high
-
----
-
-## 📋 Requirements
-
-* Node.js 18+
-* Bun (dev)
-* Next.js project (App Router or Pages Router)
-* A running dev server
-* Git
-
----
-
-## 📄 License
+## License
 
 MIT © [Shanvit Shetty](https://github.com/Shanvit7)

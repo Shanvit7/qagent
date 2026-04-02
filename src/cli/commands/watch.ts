@@ -209,6 +209,7 @@ const printResult = (
     for (const tc of result.testCases.filter((t) => t.status === "fail").slice(0, 3)) {
       p.log.message(color.dim(`  ✗ ${tc.name}: ${tc.failureMessage?.split("\n")[0]?.slice(0, 100) ?? "unknown"}`));
     }
+    p.log.message(color.dim(`  → Run ${color.cyan("qagent explain")} for a diagnosis`));
   }
 };
 
@@ -292,6 +293,34 @@ export const watchCommand = async (): Promise<void> => {
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => void runCycle(cwd), debounceMs);
   });
+
+  // -- Watch .env* files — restart dev server when env changes --
+  const ENV_FILES = [".env", ".env.local", ".env.development", ".env.development.local"];
+  let envRestartTimer: ReturnType<typeof setTimeout> | null = null;
+  for (const envFile of ENV_FILES) {
+    const envPath = join(cwd, envFile);
+    if (!existsSync(envPath)) continue;
+    watch(envPath, () => {
+      if (envRestartTimer) clearTimeout(envRestartTimer);
+      envRestartTimer = setTimeout(async () => {
+        p.log.warn(color.yellow(`⚠  ${envFile} changed — restarting dev server with new env…`));
+        try {
+          await server.stop();
+        } catch { /* already stopped */ }
+        try {
+          server = await startServer(cwd, {
+            command: config.playwright.server.command,
+            port: config.playwright.server.port,
+            readyTimeout: config.playwright.server.readyTimeout,
+          });
+          p.log.success(`Dev server restarted at ${server.url} with updated env`);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          p.log.error(color.red(`Dev server restart failed: ${msg}`));
+        }
+      }, 500);
+    });
+  }
 
   // Write scan cache once on start
   writeScanCache(cwd, scan);

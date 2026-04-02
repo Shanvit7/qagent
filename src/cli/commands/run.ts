@@ -252,7 +252,10 @@ const processFile = async (
         continue;
       } else {
         // Warnings — let the run proceed but surface the hints
-        p.log.message(color.dim(`  Pre-classifier warnings [${issueList}]`));
+        p.log.message(color.yellow(`  ⚠ Tests look weak [${issueList}]`));
+        for (const line of preCheck.feedback.split("\n").filter(Boolean)) {
+          p.log.message(color.dim(`    ${line}`));
+        }
       }
     }
 
@@ -394,7 +397,8 @@ const processFile = async (
       if (anyFixed) {
         fixSpinner.stop(`Refined (${failedTests.length} failure(s) addressed)`);
       } else {
-        fixSpinner.stop(color.dim("Refinement failed — using best"));
+        fixSpinner.stop(color.dim("Refinement failed — using best results so far"));
+        p.log.message(color.dim("  → Run `qagent explain` for a diagnosis"));
         testCode = bestCode;
         break;
       }
@@ -460,7 +464,8 @@ const processFile = async (
       const refineTokens = formatTokenDelta(beforeRefine, getSessionUsage());
       refineSpinner.stop(`Refined${refineTokens ? color.dim(`  ${refineTokens}`) : ""}`);
     } catch {
-      refineSpinner.stop(color.dim("Refinement failed — using best"));
+      refineSpinner.stop(color.dim("Refinement failed — using best results so far"));
+      p.log.message(color.dim("  → Run `qagent explain` for a diagnosis"));
       testCode = bestCode;
       break;
     }
