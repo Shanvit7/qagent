@@ -18,7 +18,7 @@ ${color.cyan("  ██║▄▄ ██║██╔══██║██║   █
 ${color.cyan("  ╚██████╔╝██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║   ")}
 ${color.cyan("   ╚══▀▀═╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝   ")}
 ${color.cyan("  ◉ change-aware E2E testing for Next.js ")}
-${color.dim("   Real tests. Real browser. Zero maintenance.              v0.1.0")}
+${color.dim("   Real tests. Real browser. Zero maintenance.              v0.1.2")}
 `;
 
 const isAlreadyInstalled = (cwd: string): boolean => {

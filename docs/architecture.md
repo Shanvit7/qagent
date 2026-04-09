@@ -65,7 +65,7 @@ report ── terminal tree + markdown + screenshot on failure
 
 The probe is the most important part of the pipeline. It runs before any AI call.
 
-**Problem it solves:** Static analysis of component source can't reliably determine what's accessible and interactive in a running app. CSS-in-JS, animation libraries, responsive breakpoints, portals, server-rendered conditionals — every project does visibility differently. Any static heuristic breaks on projects with different patterns.
+**Problem it solves:** Static analysis of component source can't reliably determine what's accessible and interactive in a running Next.js app. CSS-in-JS, animation libraries, responsive breakpoints, portals, server-rendered conditionals — every Next.js project does visibility differently. Any static heuristic breaks on projects that use different patterns.
 
 **What the probe does:**
 1. Opens real Chromium at the target route
@@ -174,7 +174,7 @@ src/
 │   └── index.ts              # Terminal tree + markdown report
 ├── config/
 │   ├── types.ts              # QAgentConfig, AiConfig, QaLens
-│   └── loader.ts             # Merge ~/.qagentrc + .qagent/config.json + skill file
+│   └── loader.ts             # Merge ~/.qagentrc + skill file
 │                             # readIterations() / writeIterations()
 ├── skill/
 │   └── template.ts           # Skill file template + IDE prompt
@@ -268,7 +268,7 @@ This is not a reimplementation of Playwright — it is a thin orchestration wrap
 
 ## Key Design Decisions
 
-**Runtime-first, not source-first.** The probe navigates the real page before generation. The AI receives what's actually accessible in the browser, not what static analysis infers. This makes the system framework-agnostic — it doesn't care how elements are hidden or animated.
+**Runtime-first, not source-first.** The probe navigates the real page before generation. The AI receives what's actually accessible in the browser, not what static analysis infers. This makes the system Next.js-specific — it understands App Router and Pages Router conventions for routing and component detection.
 
 **Behavioral not structural.** Tests answer "can users do X?" not "does attribute Y equal Z?". Structural tests break on cosmetic refactors. Behavioral tests only fail when real functionality breaks.
 

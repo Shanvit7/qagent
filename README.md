@@ -200,7 +200,6 @@ The selected provider and model are used for all AI calls (generation, evaluatio
 | File                    | Purpose                                      |
 |-------------------------|----------------------------------------------|
 | `~/.qagentrc`           | Global AI provider + model                   |
-| `.qagent/config.json`   | Per-project overrides                        |
 | `qagent-skill.md`       | Project context for the AI                   |
 | `.env` / `.env.local`   | Target project env — auto-loaded by qagent   |
 
