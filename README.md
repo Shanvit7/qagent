@@ -11,7 +11,7 @@ Every time you change a component, you ask:
 
 > *"Did I break something a user would notice?"*
 
-qagent answers that automatically — before you commit.
+qagent answers that automatically — as you develop.
 
 - 🧠 Understands your code changes (AST diff, not file diffs)
 - 🌐 Probes real browser behavior at desktop and mobile viewports
