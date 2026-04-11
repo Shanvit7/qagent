@@ -1,5 +1,4 @@
 import { Command } from "commander";
-import { createRequire } from "node:module";
 import { initCommand } from "./commands/init";
 import { runCommand } from "./commands/run";
 import { watchCommand } from "./commands/watch";
@@ -10,8 +9,7 @@ import { skillCommand } from "./commands/skill";
 import { configCommand } from "./commands/config";
 import { hookCommand } from "./commands/hook";
 
-const esmRequire = createRequire(import.meta.url);
-const PKG_VERSION: string = (esmRequire("../../package.json") as { version: string }).version;
+const PKG_VERSION = '0.1.3';
 
 export const program = new Command();
 

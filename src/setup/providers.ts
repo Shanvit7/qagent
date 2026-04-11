@@ -1,6 +1,4 @@
-import color from "picocolors";
 import {
-  CLOUD_MODELS,
   listOllamaModels,
   isOllamaRunning,
   hasApiKey,
@@ -12,29 +10,24 @@ import { askYesNo, askChoice } from "@/utils/prompt";
 
 /**
  * Interactive provider + model selection for the init wizard.
- * Returns true if a model was successfully configured.
+ * Returns success and messages.
  */
-export const setupProvider = async (): Promise<boolean> => {
+export const setupProvider = async (): Promise<{ success: boolean; messages: string[] }> => {
+  const messages: string[] = [];
+
   // If already configured, ask if they want to change
   const existing = readProvider();
   const existingModel = readModel();
   if (existing && existingModel) {
-    console.log(`Current model: ${color.bold(existingModel)} ${color.dim(`(${existing})`)}`);
+    messages.push(`Current model: ${existingModel} (${existing})`);
     const change = await askYesNo("Change model?", false);
-    if (!change) return true;
+    if (!change) return { success: true, messages };
   }
 
-  const providers = ['openai', 'anthropic', 'ollama'];
-  const providerChoiceIndex = await askChoice("Select an AI provider:", providers.map(p => `${p.charAt(0).toUpperCase() + p.slice(1)} ${hasApiKey(p as ProviderName) ? '(API key found)' : p === 'ollama' ? '(local, free, no API key)' : `(requires ${envVarName(p as ProviderName)})`}`));
+  // Only Ollama for now, as cloud providers are deprecated
+  const providers = ['ollama'];
+  const providerChoiceIndex = await askChoice("Select an AI provider:", providers.map(p => `${p.charAt(0).toUpperCase() + p.slice(1)} (local, free, no API key)`));
   const provider = providers[providerChoiceIndex] as ProviderName;
-
-  // API key check for cloud
-  if (provider !== "ollama" && !hasApiKey(provider)) {
-    console.log(color.yellow(`${envVarName(provider)} not found.`));
-    console.log(`Add your API key to ${color.bold(".env")} in your project root:`);
-    console.log(color.cyan(`  ${envVarName(provider)}=sk-...`));
-    console.log(color.dim("qagent reads from .env, .env.local, and shell environment."));
-  }
 
   // Model selection
   let options: string[] = [];
@@ -42,33 +35,30 @@ export const setupProvider = async (): Promise<boolean> => {
   if (provider === "ollama") {
     const running = await isOllamaRunning();
     if (!running) {
-      console.log(color.yellow("Ollama isn't running."));
-      console.log(`Start it: ${color.cyan("ollama serve")}`);
-      console.log(`Pull a model: ${color.cyan("ollama pull qwen2.5-coder:7b")}`);
-      return false;
+      messages.push("Ollama isn't running.");
+      messages.push("Start it: ollama serve");
+      messages.push("Pull a model: ollama pull qwen2.5-coder:7b");
+      return { success: false, messages };
     }
 
     const installed = await listOllamaModels();
     if (installed.length === 0) {
-      console.log(color.yellow("No Ollama models pulled yet."));
-      console.log(`Pull one: ${color.cyan("ollama pull qwen2.5-coder:7b")}`);
-      return false;
+      messages.push("No Ollama models pulled yet.");
+      messages.push("Pull one: ollama pull qwen2.5-coder:7b");
+      return { success: false, messages };
     }
 
     const codeModels = installed.filter((m) => /coder|code|deepseek|qwen|mistral|llama/i.test(m));
     const sorted = [...new Set([...codeModels, ...installed])];
     options = sorted;
-  } else {
-    const providerModels = CLOUD_MODELS.filter((m) => m.provider === provider);
-    options = providerModels.map((m) => m.id);
   }
 
   const selectedIndex = await askChoice("Pick a model:", options);
-  const model = options[selectedIndex];
+  const model = options[selectedIndex]!;
 
   writeProvider(provider);
   writeModel(model);
 
-  console.log(color.green(`Model: ${color.bold(model)} ${color.dim(`(${provider})`)}`));
-  return true;
+  messages.push(`Model: ${model} (${provider})`);
+  return { success: true, messages };
 };

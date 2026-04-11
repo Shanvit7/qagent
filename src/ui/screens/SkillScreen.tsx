@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
-import ConfirmInput from 'ink-confirm-input';
-import color from 'picocolors';
+import ConfirmInput from '@/ui/components/Confirm';
 import { writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { SKILL_TEMPLATE, IDE_PROMPT } from '@/skill/template';
@@ -40,10 +39,8 @@ export const SkillScreen: React.FC<SkillScreenProps> = ({ onComplete }) => {
             <Box flexDirection="column">
               <Text>{SKILL_FILE} already has content. Reset to empty template?</Text>
               <ConfirmInput
-                value={overwrite}
-                onChange={setOverwrite}
-                onSubmit={(value) => {
-                  if (value) {
+                onConfirm={(val) => {
+                  if (val) {
                     writeFileSync(skillPath, SKILL_TEMPLATE, 'utf8');
                     setStep(1);
                   } else {
@@ -62,24 +59,18 @@ export const SkillScreen: React.FC<SkillScreenProps> = ({ onComplete }) => {
       case 1:
         return (
           <Box flexDirection="column">
-            <Text color="green">{color.bold(SKILL_FILE)} created.</Text>
+            <Text color="green">{SKILL_FILE} created.</Text>
             <Text>{''}</Text>
             <Box borderStyle="round" padding={1}>
               <Text>
-                {color.bold('This must be done before generating any tests.')}
-                {''}
-                {''}
+                This must be done before generating any tests.
                 qagent has zero project-wide context on its own — this file is the only
                 way it knows your stores, auth, providers, mocks, and domain patterns.
-                {''}
-                {''}
-                {color.bold('Next step:')}
-                {''}
-                {''}
-                {`  ${color.cyan('1.')} Open your agentic IDE (Cursor, Claude Code, Windsurf, etc.)`}
-                {`  ${color.cyan('2.')} Paste the prompt below — it will explore your codebase`}
-                {`     and edit ${SKILL_FILE} directly, filling in every section`}
-                {`  ${color.cyan('3.')} Review the result, then run ${color.cyan('qagent run')}`}
+                Next step:
+                1. Open your agentic IDE (Cursor, Claude Code, Windsurf, etc.)
+                2. Paste the prompt below — it will explore your codebase
+                   and edit {SKILL_FILE} directly, filling in every section
+                3. Review the result, then run qagent run
               </Text>
             </Box>
             <Text>{''}</Text>
@@ -88,7 +79,7 @@ export const SkillScreen: React.FC<SkillScreenProps> = ({ onComplete }) => {
             <Text>{IDE_PROMPT}</Text>
             <Text>{'─'.repeat(70)}</Text>
             <Text>{''}</Text>
-            <Text>Once your IDE agent fills in {color.bold(SKILL_FILE)}, you're ready to generate tests.</Text>
+            <Text>Once your IDE agent fills in {SKILL_FILE}, you're ready to generate tests.</Text>
           </Box>
         );
 

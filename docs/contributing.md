@@ -90,16 +90,15 @@ The full authoritative conventions are in `AGENT.md` at the repo root. Key point
 
 ### Terminal Output
 
-Use `@clack/prompts` (`p.log`, `p.spinner`) and `picocolors` for color. Not `chalk` or `ora` — those were removed.
-
+Use **Ink** components (`Text`, `Box`, `Spinner` from `ink-spinner`) for UI.
 | Pattern | Usage |
 |---------|-------|
-| `color.cyan` | Section headers |
-| `color.green` | Success |
-| `color.red` | Failures, errors |
-| `color.yellow` | Warnings |
-| `color.dim` | Secondary info |
-| `p.spinner()` | Any operation >100ms |
+| `<Text color="cyan">` | Section headers |
+| `<Text color="green">` | Success |
+| `<Text color="red">` | Failures, errors |
+| `<Text color="yellow">` | Warnings |
+| `<Text dimColor>` | Secondary info |
+| `<Spinner type="dots" />` | Any operation >100ms |
 
 ---
 
@@ -247,7 +246,7 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/):
 feat(probe): inject target project env into subprocess
 fix(watch): restart dev server on .env file changes
 docs: update architecture with env loading flow
-chore(deps): bump @clack/prompts to 1.1.0
+chore(deps): bump ink to 4.4.1
 ```
 
 ---

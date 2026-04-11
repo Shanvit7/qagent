@@ -289,9 +289,12 @@ This is not a reimplementation of Playwright — it is a thin orchestration wrap
 | Package | Purpose |
 |---------|---------|
 | `@playwright/test` (peer) | Browser automation + test runner — must be in target project |
-| `@clack/prompts` | Terminal UI (spinners, prompts, log formatting) |
+| `ink` | Terminal UI (React-based components for spinners, prompts, log formatting) |
+| `ink-box` | Layout components for terminal UI |
+| `ink-select-input` | Select input component for terminal UI |
+| `ink-text-input` | Text input component for terminal UI |
+| `react` | React for Ink UI components |
 | `commander` | CLI argument parsing |
 | `ollama` | Ollama SDK (primary AI provider) |
-| `picocolors` | Terminal colors |
 | `simple-git` | Git operations (staged files, diffs) |
 | `ts-morph` | TypeScript AST for classifier and analyzer |

@@ -1,7 +1,7 @@
 import React from 'react';
 import { render } from 'ink';
 import SelectInput from 'ink-select-input';
-import ConfirmInput from 'ink-confirm-input';
+import ConfirmInput from '@/ui/components/Confirm';
 import TextInput from 'ink-text-input';
 
 /** No-op — Ink manages its own stdin lifecycle */
@@ -13,19 +13,13 @@ export const closePrompt = (): void => {};
  */
 export const askYesNo = async (q: string, defaultYes = true): Promise<boolean> => {
   return new Promise((resolve) => {
-    const App = () => {
-      const [value, setValue] = React.useState<boolean | null>(null);
-
-      return (
-        <ConfirmInput
-          value={value}
-          onChange={setValue}
-          onSubmit={(val) => {
-            resolve(val ?? defaultYes);
-          }}
-        />
-      );
-    };
+    const App = () => (
+      <ConfirmInput
+        onConfirm={(val) => {
+          resolve(val ?? defaultYes);
+        }}
+      />
+    );
 
     render(<App />);
   });
@@ -60,9 +54,10 @@ export const askMultiSelect = async <T extends string>(
   prompt: string,
   options: { label: string; value: T; description?: string; default?: boolean }[],
 ): Promise<T[]> => {
-  // For now, return single selection as array
   const selected = await askChoice(prompt, options.map(o => o.label));
-  return [options[selected].value];
+  const item = options[selected];
+  if (!item) return [];
+  return [item.value];
 };
 
 /** Ask for a secret/API key (masked input). */
@@ -76,7 +71,6 @@ export const askSecret = async (q: string): Promise<string> => {
           value={value}
           onChange={setValue}
           onSubmit={resolve}
-          mask="*"
         />
       );
     };

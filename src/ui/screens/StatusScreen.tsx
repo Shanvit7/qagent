@@ -1,6 +1,5 @@
 import React from 'react';
 import { Box, Text, useInput } from 'ink';
-import color from 'picocolors';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { readProvider, readModel, readIterations, DEFAULT_ITERATIONS } from '@/config/loader';

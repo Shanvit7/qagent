@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import SelectInput from 'ink-select-input';
-import color from 'picocolors';
 import {
   readIterations,
   writeIterations,
@@ -23,7 +22,7 @@ export const ConfigScreen: React.FC<ConfigScreenProps> = ({ subcommand, value, o
   React.useEffect(() => {
     if (!subcommand) {
       // Show current config
-      setMessage(`iterations  ${color.bold(String(readIterations()))}  ${color.dim(`(min ${MIN_ITERATIONS} · max ${MAX_ITERATIONS})`)}`);
+      setMessage(`iterations  ${String(readIterations())}  (min ${MIN_ITERATIONS} · max ${MAX_ITERATIONS})`);
       setState('show');
     } else if (subcommand === 'iterations') {
       if (!value) {
@@ -43,7 +42,7 @@ export const ConfigScreen: React.FC<ConfigScreenProps> = ({ subcommand, value, o
           setMessage(`Maximum is ${MAX_ITERATIONS}. Beyond that, token cost outweighs quality gain.`);
         } else {
           writeIterations(n);
-          setMessage(`Iterations set to ${color.bold(String(n))}${n === DEFAULT_ITERATIONS ? color.dim('  (recommended)') : ''}`);
+          setMessage(`Iterations set to ${String(n)}${n === DEFAULT_ITERATIONS ? '  (recommended)' : ''}`);
           setState('show');
         }
       }

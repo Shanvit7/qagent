@@ -237,7 +237,7 @@ If qagent fails for any reason that isn't a test failure (Ollama down, file read
 
 ```ts
 // ✅ — infra failure: warn and exit
-p.log.warn("Preflight failed — skipping tests.");
+render(<Text color="yellow">Preflight failed — skipping tests.</Text>);
 process.exit(0);
 ```
 
@@ -310,21 +310,18 @@ qagent generates **Playwright browser tests** against a live dev server. Generat
 
 ## 7. Terminal Output Conventions
 
-All user-facing terminal output uses **`@clack/prompts`** (`p.log`, `p.spinner`, `p.intro`, `p.outro`) and **`picocolors`** for color. Do not use `chalk` or `ora` — they are not in the dependencies.
+All user-facing terminal output uses **Ink** React components (`Text`, `Box`, `Spinner` from `ink-spinner`) for rich, interactive UI. Do not use `@clack/prompts` — it was replaced with Ink for better React-based rendering.
 
 | Pattern              | Usage                                      |
 |---------------------|--------------------------------------------|
-| `color.cyan`        | Section headers, command names              |
-| `color.green`       | Success messages                            |
-| `color.red`         | Failures, errors                            |
-| `color.yellow`      | Warnings, skipped items                     |
-| `color.dim`         | Secondary info, hints, raw output           |
-| `p.spinner()`       | Any operation that takes >100ms             |
-| `p.log.success()`   | Operation completed successfully            |
-| `p.log.error()`     | Operation failed                            |
-| `p.log.warn()`      | Non-critical issue (e.g., AI unavailable)   |
-| `p.intro()`         | Command entry banner                        |
-| `p.outro()`         | Command exit message                        |
+| `<Text color="cyan">` | Section headers, command names             |
+| `<Text color="green">` | Success messages                           |
+| `<Text color="red">` | Failures, errors                           |
+| `<Text color="yellow">` | Warnings, skipped items                    |
+| `<Text dimColor>` | Secondary info, hints, raw output          |
+| `<Spinner type="dots" />` | Any operation that takes >100ms            |
+| `<Text bold>` | Emphasis for important info                |
+| `render(<Box>...</Box>)` | Layout and interactive screens             |
 
 ---
 
@@ -386,6 +383,7 @@ The following are hard bans. Do not do them under any circumstance:
 | `import` without `.js` extension     | Breaks ESM resolution                            |
 | `import` without `node:` for builtins| Ambiguous resolution, bad practice               |
 | Mutable `let` when `const` works     | Prefer immutability by default                   |
+| `@clack/prompts` usage               | Replaced with Ink for React-based UI             |
 
 ---
 

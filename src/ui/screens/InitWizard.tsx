@@ -44,14 +44,14 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete }) => {
               {"   ╚══▀▀═╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝   "}
             </Text>
             <Text color="cyan">
-              {"  ◉ change-aware E2E testing for Next.js "}
+              {"  ◉ change-aware behavioral regression testing for Next.js "}
             </Text>
             <Text dimColor>
               {"   Real tests. Real browser. Zero maintenance.              v0.1.2"}
             </Text>
             <Text>{""}</Text>
             <Text bold>Welcome to qagent setup!</Text>
-            <Text>Let's configure your Next.js project for behavioral testing.</Text>
+            <Text>Let's configure your Next.js project for behavioral regression testing.</Text>
             <Text>Default settings: Ollama with qwen2.5-coder:7b, no git hook.</Text>
             <Text>Proceed with setup?</Text>
             <SelectInput

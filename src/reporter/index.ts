@@ -1,6 +1,5 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync, appendFileSync } from "node:fs";
 import { join, basename } from "node:path";
-import color from "picocolors";
 import simpleGit from "simple-git";
 import type { TokenUsage } from "@/providers/index";
 
@@ -38,39 +37,37 @@ export interface RunReport {
 // ─── Terminal renderer ────────────────────────────────────────────────────────
 
 const STATUS_ICON: Record<TestCase["status"], string> = {
-  pass: color.green("✓"),
-  fail: color.red("✗"),
-  skip: color.dim("○"),
+  pass: "✓",
+  fail: "✗",
+  skip: "○",
 };
 
 const ACTION_BADGE: Record<FileReport["action"], string> = {
-  FULL_QA: color.bgRed(color.white(" FULL QA ")),
-  LIGHTWEIGHT: color.bgYellow(color.black(" LIGHTWEIGHT ")),
+  FULL_QA: "[FULL QA]",
+  LIGHTWEIGHT: "[LIGHTWEIGHT]",
 };
 
-// Use process.stdout.write instead of console.log so clack's cursor state
-// is not disturbed when renderFileReport is called between clack operations.
 const writeln = (line = ""): void => { process.stdout.write(line + "\n"); };
 
 export const renderFileReport = (report: FileReport): void => {
-  const name = color.bold(basename(report.sourceFile));
+  const name = basename(report.sourceFile);
   writeln();
   writeln(`  ${ACTION_BADGE[report.action]}  ${name}`);
 
   if (report.status === "error") {
-    writeln(color.red("  ✗ Could not run tests"));
-    if (report.errorOutput) writeln(color.dim(report.errorOutput.slice(0, 400)));
+    writeln("  ✗ Could not run tests");
+    if (report.errorOutput) writeln(report.errorOutput.slice(0, 400));
     return;
   }
 
   const tree = report.testCases;
   tree.forEach((tc, i) => {
     const connector = i === tree.length - 1 ? "└─" : "├─";
-    const dur = color.dim(`${tc.durationMs}ms`);
+    const dur = `${tc.durationMs}ms`;
     const icon = STATUS_ICON[tc.status];
-    writeln(`  ${color.dim(connector)} ${icon}  ${tc.name}  ${dur}`);
+    writeln(`  ${connector} ${icon}  ${tc.name}  ${dur}`);
     if (tc.failureMessage) {
-      writeln(`  ${color.dim("   ")} ${color.red(tc.failureMessage)}`);
+      writeln(`     ${tc.failureMessage}`);
     }
   });
 
@@ -78,10 +75,10 @@ export const renderFileReport = (report: FileReport): void => {
   const failed = tree.filter((t) => t.status === "fail").length;
   const total = tree.length;
   const summary = failed > 0
-    ? color.red(`${failed}/${total} failed`)
-    : color.green(`${total}/${total} passed`);
+    ? `${failed}/${total} failed`
+    : `${total}/${total} passed`;
   writeln();
-  writeln(`  ${summary}  ·  ${color.dim(`${report.totalMs}ms`)}`);
+  writeln(`  ${summary}  ·  ${report.totalMs}ms`);
 };
 
 // ─── Git helpers ──────────────────────────────────────────────────────────────

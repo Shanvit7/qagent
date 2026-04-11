@@ -3,7 +3,6 @@ import { Box, Text, useInput } from 'ink';
 import SelectInput from 'ink-select-input';
 import { injectGitHook, removeGitHook, detectHuskyDir } from '@/git/hook';
 import { detectPackageManager } from '@/utils/packageManager';
-import color from 'picocolors';
 
 interface HookWizardProps {
   onComplete: () => void;
@@ -49,7 +48,7 @@ export const HookWizard: React.FC<HookWizardProps> = ({ onComplete }) => {
                     setStatus(`Hook enabled via ${target === "husky" ? "Husky" : "git"} → ${hookPath}`);
                   } catch (err) {
                     const message = err instanceof Error ? err.message : String(err);
-                    setStatus(color.red(`Could not install hook: ${message}`));
+                    setStatus(`Could not install hook: ${message}`);
                   }
                 } else {
                   setStep(1);
@@ -59,7 +58,7 @@ export const HookWizard: React.FC<HookWizardProps> = ({ onComplete }) => {
                     setStatus('Hook disabled — run `qagent run` manually on staged changes');
                   } catch (err) {
                     const message = err instanceof Error ? err.message : String(err);
-                    setStatus(color.red(`Could not remove hook: ${message}`));
+                    setStatus(`Could not remove hook: ${message}`);
                   }
                 }
               }}

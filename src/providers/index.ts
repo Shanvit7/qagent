@@ -62,21 +62,6 @@ export interface ChatOptions extends GenerateOptions {
   tools?: ToolDef[];
 }
 
-// ─── Model registry ──────────────────────────────────────────────────────────
-
-export interface ModelOption {
-  id: string;
-  label: string;
-  provider: ProviderName;
-}
-
-export const CLOUD_MODELS: ModelOption[] = [
-  { id: "gpt-4o",             label: "GPT-4o — best overall (OpenAI)",         provider: "openai" },
-  { id: "gpt-4o-mini",        label: "GPT-4o Mini — fast and cheap (OpenAI)",  provider: "openai" },
-  { id: "claude-sonnet-4-20250514", label: "Claude Sonnet 4 — best overall (Anthropic)", provider: "anthropic" },
-  { id: "claude-haiku-4-5-20251001",  label: "Claude Haiku 4.5 — fast and cheap (Anthropic)", provider: "anthropic" },
-];
-
 // ─── .env file loading ───────────────────────────────────────────────────────
 // Loads keys from .env / .env.local so users don't need to export in shell.
 // Only loads keys we care about — doesn't pollute the full process.env.

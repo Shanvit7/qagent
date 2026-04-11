@@ -1,6 +1,6 @@
 # qagent
 
-> **Change-aware E2E testing for Next.js**  
+> **Change-aware behavioral regression testing for Next.js**  
 > Automatically generates and runs Playwright tests based on your staged changes — in a real browser.
 
 ---
@@ -99,6 +99,8 @@ $ qagent watch
 
   3/3 passed · 3.5s
 ```
+
+Behavioral regression tests ensure user flows work after code changes.
 
 ---
 

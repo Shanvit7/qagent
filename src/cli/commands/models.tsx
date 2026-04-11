@@ -1,11 +1,10 @@
 import React from "react";
 import { render } from "ink";
 import { ModelsWizard } from "../../ui/screens/ModelsWizard";
-
 export const modelsCommand = async (): Promise<void> => {
   if (!process.stdin.isTTY) {
-    console.log("qagent models requires an interactive terminal (TTY). Please run in a proper terminal.");
-    return;
+    process.stderr.write("qagent models requires an interactive terminal (TTY). Please run in a proper terminal.\n");
+    process.exit(1);
   }
 
   await new Promise<void>((resolvePromise) => {
@@ -17,4 +16,4 @@ export const modelsCommand = async (): Promise<void> => {
       />
     );
   });
-}
+};

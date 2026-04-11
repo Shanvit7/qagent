@@ -1,6 +1,5 @@
 import React from 'react';
 import { Box, Text, useInput } from 'ink';
-import color from 'picocolors';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadConfig } from '@/config/loader';
