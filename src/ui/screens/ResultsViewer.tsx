@@ -73,7 +73,7 @@ export const ResultsViewer: React.FC<ResultsViewerProps> = ({
       <Box marginTop={1}>
         <Text dimColor>
           {hasViolations || hasFailures
-            ? 'Review the issues above and fix them before committing.'
+            ? 'Review the issues above and fix them before proceeding.'
             : 'All tests passed! Your changes look good.'
           }
         </Text>

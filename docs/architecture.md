@@ -130,8 +130,7 @@ src/
 │       ├── run.ts            # Core pipeline: classify → probe → generate → loop → report
 │       ├── watch.ts          # Background CI: watches .git/index + .env* files
 │       ├── explain.ts        # AI explains last failure
-│       ├── hook.ts           # Enable/disable pre-commit git hook
-│       ├── config.ts         # Runtime config (e.g., qagent config iterations 6)
+│       ├── config.ts
 │       ├── models.ts         # Provider + model selection
 │       ├── skill.ts          # Skill file creation + IDE prompt
 │       └── status.ts         # Config + provider health
@@ -274,7 +273,7 @@ This is not a reimplementation of Playwright — it is a thin orchestration wrap
 
 **Interaction outcomes eliminate stale locators.** For toggle elements, the probe clicks them in a fresh context and records what changes. The generator receives explicit before/after state: "Open menu → click → becomes Close menu". No inference needed, no stale locator possible.
 
-**Stage-based, not commit-based.** qagent runs on `git add` (staged changes), not on commit. Developers get feedback before they commit, with no blocking in watch mode.
+**Stage-based ** qagent runs on `git add` (staged changes). Developers get feedback before they commit, with no blocking in watch mode.
 
 **Env loaded everywhere it matters.** The same `loadProjectEnv()` call feeds the dev server, the probe subprocess, and the Playwright test runner. Env file changes trigger automatic dev server restart in watch mode.
 

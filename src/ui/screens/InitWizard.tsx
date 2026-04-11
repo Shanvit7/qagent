@@ -9,15 +9,13 @@ interface InitWizardProps {
 interface Config {
   aiProvider: string;
   model: string;
-  enableGitHook: boolean;
 }
 
 export const InitWizard: React.FC<InitWizardProps> = ({ onComplete }) => {
   const [step, setStep] = useState(0);
-  const [config, setConfig] = useState({
+  const [config] = useState({
     aiProvider: 'ollama',
     model: 'qwen2.5-coder:7b',
-    enableGitHook: false
   });
 
   const renderStep = () => {
@@ -52,7 +50,9 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete }) => {
             <Text>{""}</Text>
             <Text bold>Welcome to qagent setup!</Text>
             <Text>Let's configure your Next.js project for behavioral regression testing.</Text>
-            <Text>Default settings: Ollama with qwen2.5-coder:7b, no git hook.</Text>
+            <Text>Default settings: Ollama with qwen2.5-coder:7b.</Text>
+            <Text>Run <Text color="cyan">qagent watch</Text> after setup — QA runs automatically on every <Text color="cyan">git add</Text>.</Text>
+            <Text>Or run <Text color="cyan">qagent run</Text> manually to test your currently staged changes.</Text>
             <Text>Proceed with setup?</Text>
             <SelectInput
               items={[
@@ -76,7 +76,9 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete }) => {
             <Text bold>Configuration Complete!</Text>
             <Text>AI Provider: {config.aiProvider}</Text>
             <Text>Model: {config.model}</Text>
-            <Text>Git Hook: {config.enableGitHook ? 'Enabled' : 'Disabled'}</Text>
+            <Text>{""}</Text>
+            <Text dimColor>Run <Text color="cyan">qagent watch</Text> to start — QA triggers on every <Text color="cyan">git add</Text>.</Text>
+            <Text dimColor>Or use <Text color="cyan">qagent run</Text> to manually test your currently staged changes.</Text>
             <Text>Press Enter to finish setup...</Text>
           </Box>
         );

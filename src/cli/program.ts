@@ -7,7 +7,6 @@ import { statusCommand } from "./commands/status";
 import { modelsCommand } from "./commands/models";
 import { skillCommand } from "./commands/skill";
 import { configCommand } from "./commands/config";
-import { hookCommand } from "./commands/hook";
 
 const PKG_VERSION = '0.1.3';
 
@@ -15,7 +14,7 @@ export const program = new Command();
 
 program
   .name("qagent")
-  .description("Local QA agent — tests your app in a real browser")
+  .description("change-aware behavioral regression testing for Next.js ")
   .version(PKG_VERSION);
 
 program
@@ -49,10 +48,6 @@ program
   .description("Switch the AI model used for test generation")
   .action(modelsCommand);
 
-program
-  .command("hook")
-  .description("Enable/disable optional pre-commit QA gate")
-  .action(hookCommand);
 
 program
   .command("skill")

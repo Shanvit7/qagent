@@ -145,7 +145,6 @@ test("user can toggle the mobile menu", async ({ page }) => {
 | `qagent watch`                  | Background CI — runs on every `git add`           |
 | `qagent run`                    | Run once on currently staged files, then exit     |
 | `qagent explain`                | AI explains the last test failure                 |
-| `qagent hook`                   | Enable/disable optional pre-commit blocking gate  |
 | `qagent config iterations <n>`  | Set max refinement loop iterations (1–8)          |
 | `qagent models`                 | Switch AI provider / model interactively          |
 | `qagent skill`                  | Generate project context file (`qagent-skill.md`) |
@@ -229,7 +228,7 @@ src/
 ├── reporter/     # Terminal output + markdown reports
 ├── config/       # Config loading, types, defaults
 ├── skill/        # Skill file template
-└── cli/          # Commands: watch, run, explain, hook, config, models, skill, status
+└── cli/          # Commands: watch, run, explain, config, models, skill, status
 ```
 
 ---

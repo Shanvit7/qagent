@@ -115,7 +115,7 @@ src/
 ├── evaluator/       # Test quality grading + refinement prompts
 ├── feedback/        # Cross-run failure persistence
 ├── generator/       # Prompt construction + AI provider calls
-├── git/             # Staged files reader + git hook management
+├── git/             # Staged files reader (staged.ts)
 ├── preflight/       # Pre-run checks: model, API key, Chromium
 ├── probe/           # Runtime browser probe (a11y tree, interactions)
 ├── providers/       # Unified AI abstraction (Ollama, OpenAI, Anthropic)

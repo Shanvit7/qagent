@@ -310,7 +310,7 @@ qagent generates **Playwright browser tests** against a live dev server. Generat
 
 ## 7. Terminal Output Conventions
 
-All user-facing terminal output uses **Ink** React components (`Text`, `Box`, `Spinner` from `ink-spinner`) for rich, interactive UI. Do not use `@clack/prompts` — it was replaced with Ink for better React-based rendering.
+All user-facing terminal output uses **Ink** React components (`Text`, `Box`, `Spinner` from `ink-spinner`) for rich, interactive UI.
 
 | Pattern              | Usage                                      |
 |---------------------|--------------------------------------------|
@@ -383,7 +383,6 @@ The following are hard bans. Do not do them under any circumstance:
 | `import` without `.js` extension     | Breaks ESM resolution                            |
 | `import` without `node:` for builtins| Ambiguous resolution, bad practice               |
 | Mutable `let` when `const` works     | Prefer immutability by default                   |
-| `@clack/prompts` usage               | Replaced with Ink for React-based UI             |
 
 ---
 

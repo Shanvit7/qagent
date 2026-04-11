@@ -25,7 +25,6 @@ export interface FileReport {
 export interface RunReport {
   timestamp: string;
   branch: string;
-  commitHash: string;
   files: FileReport[];
   totalPassed: number;
   totalFailed: number;
@@ -83,19 +82,13 @@ export const renderFileReport = (report: FileReport): void => {
 
 // ─── Git helpers ──────────────────────────────────────────────────────────────
 
-const getGitInfo = async (cwd: string): Promise<{ branch: string; commitHash: string }> => {
+const getBranch = async (cwd: string): Promise<string> => {
   try {
     const git = simpleGit(cwd);
-    const [branch, log] = await Promise.all([
-      git.revparse(["--abbrev-ref", "HEAD"]),
-      git.log(["--oneline", "-1"]),
-    ]);
-    return {
-      branch: branch.trim(),
-      commitHash: log.latest?.hash?.slice(0, 7) ?? "unknown",
-    };
+    const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
+    return branch.trim();
   } catch {
-    return { branch: "unknown", commitHash: "unknown" };
+    return "unknown";
   }
 };
 
@@ -109,8 +102,7 @@ const buildMarkdown = (report: RunReport): string => {
     ``,
     `**Date:** ${report.timestamp}  `,
     `**Branch:** ${report.branch}  `,
-    `**Commit:** ${report.commitHash}  `,
-    `**Result:** ${report.overallPassed ? "✅ All tests passed" : "❌ Tests failed"}`,
+    `**Staged changes QA** — ${report.overallPassed ? "✅ All tests passed" : "❌ Tests failed"}`,
     ``,
     `---`,
     ``,
@@ -156,7 +148,7 @@ export const writeRunReport = async (
   files: FileReport[],
   tokenUsage?: TokenUsage,
 ): Promise<string> => {
-  const { branch, commitHash } = await getGitInfo(cwd);
+  const branch = await getBranch(cwd);
 
   const totalPassed = files.flatMap((f) => f.testCases).filter((t) => t.status === "pass").length;
   const totalFailed = files.flatMap((f) => f.testCases).filter((t) => t.status === "fail").length;
@@ -165,7 +157,6 @@ export const writeRunReport = async (
   const report: RunReport = {
     timestamp: new Date().toISOString().replace("T", " ").slice(0, 19),
     branch,
-    commitHash,
     files,
     totalPassed,
     totalFailed,
@@ -178,8 +169,8 @@ export const writeRunReport = async (
   const reportsDir = join(cwd, REPORTS_DIR);
   mkdirSync(reportsDir, { recursive: true });
 
-  const mdPath = join(reportsDir, `${slug}_${commitHash}.md`);
-  const jsonPath = join(reportsDir, `${slug}_${commitHash}.json`);
+  const mdPath = join(reportsDir, `${slug}.md`);
+  const jsonPath = join(reportsDir, `${slug}.json`);
 
   writeFileSync(mdPath, buildMarkdown(report), "utf8");
   writeFileSync(jsonPath, JSON.stringify(report, null, 2), "utf8");
