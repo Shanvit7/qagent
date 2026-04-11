@@ -1,4 +1,3 @@
-import * as p from "@clack/prompts";
 import color from "picocolors";
 import {
   CLOUD_MODELS,
@@ -9,6 +8,7 @@ import {
 } from "@/providers/index";
 import type { ProviderName } from "@/providers/index";
 import { writeProvider, writeModel, readProvider, readModel } from "@/config/loader";
+import { askYesNo, askChoice } from "@/utils/prompt";
 
 /**
  * Interactive provider + model selection for the init wizard.
@@ -19,92 +19,56 @@ export const setupProvider = async (): Promise<boolean> => {
   const existing = readProvider();
   const existingModel = readModel();
   if (existing && existingModel) {
-    p.log.info(`Current model: ${color.bold(existingModel)} ${color.dim(`(${existing})`)}`);
-    const change = await p.confirm({
-      message: "Change model?",
-      initialValue: false,
-    });
-    if (p.isCancel(change) || !change) return true;
+    console.log(`Current model: ${color.bold(existingModel)} ${color.dim(`(${existing})`)}`);
+    const change = await askYesNo("Change model?", false);
+    if (!change) return true;
   }
 
-  const providerChoice = await p.select({
-    message: "Select an AI provider:",
-    options: [
-      { value: "openai" as const,    label: "OpenAI",    hint: hasApiKey("openai") ? "API key found" : "requires OPENAI_API_KEY" },
-      { value: "anthropic" as const, label: "Anthropic", hint: hasApiKey("anthropic") ? "API key found" : "requires ANTHROPIC_API_KEY" },
-      { value: "ollama" as const,    label: "Ollama",    hint: "local, free, no API key" },
-    ],
-  });
-
-  if (p.isCancel(providerChoice)) return false;
-  const provider = providerChoice as ProviderName;
+  const providers = ['openai', 'anthropic', 'ollama'];
+  const providerChoiceIndex = await askChoice("Select an AI provider:", providers.map(p => `${p.charAt(0).toUpperCase() + p.slice(1)} ${hasApiKey(p as ProviderName) ? '(API key found)' : p === 'ollama' ? '(local, free, no API key)' : `(requires ${envVarName(p as ProviderName)})`}`));
+  const provider = providers[providerChoiceIndex] as ProviderName;
 
   // API key check for cloud
   if (provider !== "ollama" && !hasApiKey(provider)) {
-    p.log.warn(`${envVarName(provider)} not found.`);
-    p.note(
-      [
-        `Add your API key to ${color.bold(".env")} in your project root:`,
-        "",
-        color.cyan(`  ${envVarName(provider)}=sk-...`),
-        "",
-        color.dim("qagent reads from .env, .env.local, and shell environment."),
-      ].join("\n"),
-      "API Key Required",
-    );
+    console.log(color.yellow(`${envVarName(provider)} not found.`));
+    console.log(`Add your API key to ${color.bold(".env")} in your project root:`);
+    console.log(color.cyan(`  ${envVarName(provider)}=sk-...`));
+    console.log(color.dim("qagent reads from .env, .env.local, and shell environment."));
   }
 
   // Model selection
-  type ModelChoice = { value: string; label: string; hint?: string };
-  let options: ModelChoice[] = [];
+  let options: string[] = [];
 
   if (provider === "ollama") {
     const running = await isOllamaRunning();
     if (!running) {
-      p.log.warn("Ollama isn't running.");
-      p.note(
-        [
-          `Start it: ${color.cyan("ollama serve")}`,
-          `Pull a model: ${color.cyan("ollama pull qwen2.5-coder:7b")}`,
-          "",
-          "Then run " + color.cyan("qagent models") + " to configure.",
-        ].join("\n"),
-        "Ollama Setup",
-      );
+      console.log(color.yellow("Ollama isn't running."));
+      console.log(`Start it: ${color.cyan("ollama serve")}`);
+      console.log(`Pull a model: ${color.cyan("ollama pull qwen2.5-coder:7b")}`);
       return false;
     }
 
     const installed = await listOllamaModels();
     if (installed.length === 0) {
-      p.log.warn("No Ollama models pulled yet.");
-      p.note(`Pull one: ${color.cyan("ollama pull qwen2.5-coder:7b")}`, "Ollama Setup");
+      console.log(color.yellow("No Ollama models pulled yet."));
+      console.log(`Pull one: ${color.cyan("ollama pull qwen2.5-coder:7b")}`);
       return false;
     }
 
     const codeModels = installed.filter((m) => /coder|code|deepseek|qwen|mistral|llama/i.test(m));
     const sorted = [...new Set([...codeModels, ...installed])];
-    options = sorted.map((m) => ({ value: m, label: m }));
+    options = sorted;
   } else {
     const providerModels = CLOUD_MODELS.filter((m) => m.provider === provider);
-    options = providerModels.map((m) => ({
-      value: m.id,
-      label: m.id,
-      hint: m.label,
-    }));
+    options = providerModels.map((m) => m.id);
   }
 
-  const selected = await p.select({
-    message: "Pick a model:",
-    options,
-    initialValue: options[0]?.value,
-  });
+  const selectedIndex = await askChoice("Pick a model:", options);
+  const model = options[selectedIndex];
 
-  if (p.isCancel(selected)) return false;
-
-  const model = selected as string;
   writeProvider(provider);
   writeModel(model);
 
-  p.log.success(`Model: ${color.bold(model)} ${color.dim(`(${provider})`)}`);
+  console.log(color.green(`Model: ${color.bold(model)} ${color.dim(`(${provider})`)}`));
   return true;
 };

@@ -1,22 +1,9 @@
-/**
- * Preflight checks — run before `qagent run` and `qagent watch`.
- *
- * Validates that the environment is ready:
- *   1. AI model configured (provider + model in .qagentrc)
- *   2. API key present (for cloud providers)
- *   3. Ollama reachable (if using Ollama)
- *   4. Playwright Chromium browser installed
- *
- * If any check fails, prompts the user to fix it interactively.
- * Returns false if the user cancels or a required fix can't be applied.
- */
-
-import * as p from "@clack/prompts";
 import color from "picocolors";
 import { readProvider, readModel } from "@/config/loader";
 import { hasApiKey, envVarName, isOllamaRunning, listOllamaModels } from "@/providers/index";
 import { setupProvider } from "@/setup/providers";
 import { detectPlaywrightBrowsers, ensurePlaywrightBrowsers } from "@/runner/index";
+import { askYesNo } from "@/utils/prompt";
 
 export interface PreflightResult {
   ok: boolean;
@@ -44,13 +31,11 @@ export const runPreflight = async (
       return { ok: false, reason: "No AI model configured. Run `qagent init` to set up." };
     }
 
-    p.log.warn("No AI model configured yet.");
+    console.log(color.yellow("No AI model configured yet."));
 
     const configured = await setupProvider();
     if (!configured) {
-      p.log.error(
-        `Model is required. Run ${color.cyan("qagent init")} or ${color.cyan("qagent models")} to configure.`,
-      );
+      console.log(color.red(`Model is required. Run ${color.cyan("qagent init")} or ${color.cyan("qagent models")} to configure.`));
       return { ok: false, reason: "Model not configured" };
     }
   }
@@ -70,19 +55,11 @@ export const runPreflight = async (
     }
 
     const envVar = envVarName(finalProvider);
-    p.log.warn(`${color.bold(envVar)} not found.`);
-    p.note(
-      [
-        `Add your API key to ${color.bold(".env")} in your project root:`,
-        "",
-        color.cyan(`  ${envVar}=sk-...`),
-        "",
-        color.dim("qagent reads from .env, .env.local, and shell environment."),
-        "",
-        `Then re-run ${color.cyan("qagent run")}.`,
-      ].join("\n"),
-      "API Key Required",
-    );
+    console.log(color.yellow(`${color.bold(envVar)} not found.`));
+    console.log(`Add your API key to ${color.bold(".env")} in your project root:`);
+    console.log(color.cyan(`  ${envVar}=sk-...`));
+    console.log(color.dim("qagent reads from .env, .env.local, and shell environment."));
+    console.log(color.cyan(`Then re-run ${color.cyan("qagent run")}.`));
     return { ok: false, reason: `${envVar} not set` };
   }
 
@@ -95,14 +72,9 @@ export const runPreflight = async (
         return { ok: false, reason: "Ollama is not running. Start it with `ollama serve`." };
       }
 
-      p.log.warn("Ollama is not running.");
-      p.note(
-        [
-          `Start Ollama:  ${color.cyan("ollama serve")}`,
-          `Then re-run:   ${color.cyan("qagent run")}`,
-        ].join("\n"),
-        "Ollama Required",
-      );
+      console.log(color.yellow("Ollama is not running."));
+      console.log(`Start Ollama:  ${color.cyan("ollama serve")}`);
+      console.log(`Then re-run:   ${color.cyan("qagent run")}`);
       return { ok: false, reason: "Ollama not running" };
     }
 
@@ -113,29 +85,25 @@ export const runPreflight = async (
         return { ok: false, reason: `Model ${finalModel} not found in Ollama. Pull it with \`ollama pull ${finalModel}\`.` };
       }
 
-      p.log.warn(`Model ${color.bold(finalModel)} is not pulled in Ollama.`);
+      console.log(color.yellow(`Model ${color.bold(finalModel)} is not pulled in Ollama.`));
 
-      const shouldPull = await p.confirm({
-        message: `Pull ${color.cyan(finalModel)} now?`,
-        initialValue: true,
-      });
+      const shouldPull = await askYesNo(`Pull ${color.cyan(finalModel)} now?`, true);
 
-      if (p.isCancel(shouldPull) || !shouldPull) {
-        p.log.info(`Run ${color.cyan(`ollama pull ${finalModel}`)} manually, then retry.`);
+      if (!shouldPull) {
+        console.log(`Run ${color.cyan(`ollama pull ${finalModel}`)} manually, then retry.`);
         return { ok: false, reason: `Model ${finalModel} not available` };
       }
 
-      const s = p.spinner();
-      s.start(`Pulling ${finalModel}…`);
+      console.log(`Pulling ${finalModel}…`);
       try {
         const { Ollama } = await import("ollama");
         const ollama = new Ollama();
         await ollama.pull({ model: finalModel });
-        s.stop(`${finalModel} pulled ✓`);
+        console.log(`${finalModel} pulled ✓`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        s.stop(color.red("Pull failed"));
-        p.log.error(msg.slice(0, 300));
+        console.log(color.red("Pull failed"));
+        console.log(msg.slice(0, 300));
         return { ok: false, reason: `Failed to pull ${finalModel}` };
       }
     }
@@ -150,38 +118,30 @@ export const runPreflight = async (
       return { ok: false, reason: "Playwright Chromium not installed. Run `npx playwright install chromium`." };
     }
 
-    p.log.warn("Playwright Chromium browser not installed.");
+    console.log(color.yellow("Playwright Chromium browser not installed."));
 
-    const shouldInstall = await p.confirm({
-      message: `Install Chromium now? ${color.dim("(required for browser tests)")}`,
-      initialValue: true,
-    });
+    const shouldInstall = await askYesNo(`Install Chromium now? ${color.dim("(required for browser tests)")}`, true);
 
-    if (p.isCancel(shouldInstall) || !shouldInstall) {
-      p.log.info(
-        `Run ${color.cyan("npx playwright install chromium")} manually, then retry.`,
-      );
+    if (!shouldInstall) {
+      console.log(`Run ${color.cyan("npx playwright install chromium")} manually, then retry.`);
       return { ok: false, reason: "Playwright Chromium not installed" };
     }
 
-    const s = p.spinner();
-    s.start("Installing Chromium via Playwright…");
+    console.log("Installing Chromium via Playwright…");
     try {
       await ensurePlaywrightBrowsers(cwd);
-      s.stop("Chromium installed ✓");
+      console.log("Chromium installed ✓");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      s.stop(color.red("Install failed"));
-      p.log.error(msg.slice(0, 400));
+      console.log(color.red("Install failed"));
+      console.log(msg.slice(0, 400));
       return { ok: false, reason: "Playwright install failed" };
     }
   }
 
   // ── All checks passed ─────────────────────────────────────────────────────
 
-  p.log.step(
-    `${color.green("✓")} Ready — ${color.bold(finalModel)} ${color.dim(`(${finalProvider})`)} + Chromium`,
-  );
+  console.log(`${color.green("✓")} Ready — ${color.bold(finalModel)} ${color.dim(`(${finalProvider})`)} + Chromium`);
 
   return { ok: true };
 };
