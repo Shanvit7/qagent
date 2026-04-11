@@ -8,6 +8,7 @@ import { statusCommand } from "./commands/status";
 import { modelsCommand } from "./commands/models";
 import { skillCommand } from "./commands/skill";
 import { configCommand } from "./commands/config";
+import { hookCommand } from "./commands/hook";
 
 const esmRequire = createRequire(import.meta.url);
 const PKG_VERSION: string = (esmRequire("../../package.json") as { version: string }).version;
@@ -50,7 +51,10 @@ program
   .description("Switch the AI model used for test generation")
   .action(modelsCommand);
 
-
+program
+  .command("hook")
+  .description("Enable/disable optional pre-commit QA gate")
+  .action(hookCommand);
 
 program
   .command("skill")
