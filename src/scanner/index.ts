@@ -15,7 +15,7 @@
  * and depends on) see src/context/index.ts.
  */
 
-import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, extname } from "node:path";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -100,10 +100,6 @@ export const scanToMarkdown = (scan: ProjectScan): string => {
   return lines.join("\n");
 };
 
-export const writeScanCache = (cwd: string, scan: ProjectScan): void => {
-  const dir = join(cwd, ".qagent");
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, "project.md"), scanToMarkdown(scan), "utf8");
-};
+
 
 

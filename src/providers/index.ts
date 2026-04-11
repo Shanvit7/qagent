@@ -287,6 +287,42 @@ export const isOllamaRunning = async (): Promise<boolean> => {
   }
 };
 
+export const listOpenAIModels = async (): Promise<string[]> => {
+  try {
+    const apiKey = getApiKey("openai");
+    if (!apiKey) return [];
+    const res = await fetch("https://api.openai.com/v1/models", {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (!res.ok) return [];
+    const json = await res.json() as { data: { id: string; owned_by: string }[] };
+    return json.data
+      .filter((m) => m.owned_by === "openai" && /gpt-4|gpt-3\.5|o1|o3/i.test(m.id))
+      .map((m) => m.id)
+      .sort();
+  } catch {
+    return [];
+  }
+};
+
+export const listAnthropicModels = async (): Promise<string[]> => {
+  try {
+    const apiKey = getApiKey("anthropic");
+    if (!apiKey) return [];
+    const res = await fetch("https://api.anthropic.com/v1/models", {
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+    });
+    if (!res.ok) return [];
+    const json = await res.json() as { data: { id: string }[] };
+    return json.data.map((m) => m.id).sort();
+  } catch {
+    return [];
+  }
+};
+
 // ─── OpenAI provider ─────────────────────────────────────────────────────────
 
 const openaiGenerate = async (

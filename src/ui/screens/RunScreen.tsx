@@ -5,14 +5,11 @@ import { join } from 'node:path';
 import { getStagedFiles } from '@/git/staged';
 import { classifyStagedFiles, type ClassifiedFile } from '@/classifier/index';
 import { analyzeFile } from '@/analyzer/index';
-import { generateTests, refineTests, type GenerateTestsOptions } from '@/generator/index';
-import { runPlaywrightTest, type StructuredTestResult } from '@/runner/index';
-import { evaluateTests, buildRefinementPrompt, HARD_RULES } from '@/evaluator/index';
-import type { EvaluationResult } from '@/evaluator/index';
-import { classifyTestCode } from '@/test-classifier/index';
+import { generateTests, type GenerateTestsOptions } from '@/generator/index';
+import { runPlaywrightTest } from '@/runner/index';
 import { loadConfig } from '@/config/loader';
 import { runPreflight } from '@/preflight/index';
-import { scanProject, writeScanCache, scanToMarkdown } from '@/scanner/index';
+import { scanProject, scanToMarkdown } from '@/scanner/index';
 import { buildFileContext } from '@/context/index';
 import { buildRouteMap, findRoutesForFile, type RouteMap } from '@/routes/index';
 import { startServer, type ServerHandle } from '@/server/index';
@@ -76,7 +73,6 @@ export const RunScreen: React.FC<RunScreenProps> = ({ options, onComplete }) => 
 
       setStatus('Scanning project...');
       const scan = scanProject(cwd);
-      writeScanCache(cwd, scan);
       const scanContext = scanToMarkdown(scan);
       const router = scan.nextjsRouter;
 
