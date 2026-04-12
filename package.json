@@ -1,7 +1,7 @@
 {
   "name": "@shanvit7/qagent",
   "version": "0.1.3",
-  "description": "Behavioral regression testing for every staged change — AI probes your live app and generates focused Playwright tests that verify user flows didn't break",
+  "description": "Behavioral regression testing for every Next.js staged change — AI probes your live app and generates focused Playwright tests that verify user flows didn't break",
   "type": "module",
   "bin": {
     "qagent": "dist/index.js"
