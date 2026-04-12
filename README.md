@@ -2,6 +2,8 @@
 
 Change-aware behavioral regression testing for Next.js. Generates and runs Playwright tests against your staged changes — in a real browser.
 
+> **⚠️ Early Alpha**: qagent is in active development and may have rough edges. If you encounter issues or have ideas, please [open an issue](https://github.com/Shanvit7/qagent/issues) or [contribute](https://github.com/Shanvit7/qagent/blob/main/docs/contributing.md)! Your feedback helps shape this package. 
+
 ---
 
 ## The problem
@@ -198,6 +200,19 @@ See [docs/local-testing.md](docs/local-testing.md) for the local integration tes
 - Next.js project (App Router or Pages Router)
 - `@playwright/test` in the target project
 - One of: Ollama running locally, `OPENAI_API_KEY`, or `ANTHROPIC_API_KEY`
+
+> **Note**: qagent is currently in alpha. It works best with standard Next.js setups. If your project uses advanced patterns, you may encounter limitations — please [let us know](https://github.com/Shanvit7/qagent/issues)!
+
+---
+
+## Contributing & Feedback
+
+qagent is an open-source project driven by community input. Since it's in early development:
+
+- **Found a bug?** [Report it](https://github.com/Shanvit7/qagent/issues) with steps to reproduce
+- **Have ideas?** [Open a feature request](https://github.com/Shanvit7/qagent/issues)
+- **Want to contribute?** See [docs/contributing.md](docs/contributing.md) for setup and guidelines
+- **Join the discussion** on GitHub — every issue, PR, or star helps!
 
 ---
 
