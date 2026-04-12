@@ -1,7 +1,8 @@
 import React from 'react';
 import { render } from 'ink';
+import { Box, Text } from 'ink';
 import SelectInput from 'ink-select-input';
-import ConfirmInput from '@/ui/components/Confirm';
+import Confirm from '@/ui/components/Confirm';
 import TextInput from 'ink-text-input';
 
 /** No-op — Ink manages its own stdin lifecycle */
@@ -13,15 +14,18 @@ export const closePrompt = (): void => {};
  */
 export const askYesNo = async (q: string, defaultYes = true): Promise<boolean> => {
   return new Promise((resolve) => {
-    const App = () => (
-      <ConfirmInput
-        onConfirm={(val) => {
-          resolve(val ?? defaultYes);
-        }}
-      />
+    const { unmount } = render(
+      <Box flexDirection="column">
+        <Text>{q}</Text>
+        <Confirm
+          defaultYes={defaultYes}
+          onConfirm={(val) => {
+            unmount();
+            resolve(val ?? defaultYes);
+          }}
+        />
+      </Box>
     );
-
-    render(<App />);
   });
 };
 

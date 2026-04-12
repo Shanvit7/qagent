@@ -4,7 +4,7 @@ import SelectInput from 'ink-select-input';
 import { isOllamaRunning, listOllamaModels, listOpenAIModels, listAnthropicModels } from '@/providers/index';
 import { writeProvider, writeModel } from '@/config/loader';
 import { detectPlaywrightBrowsers, ensurePlaywrightBrowsers } from '@/runner/index';
-import { readFileSync } from 'node:fs';
+import { detectPackageManager } from '@/utils/packageManager';
 import { resolve } from 'node:path';
 
 interface InitWizardProps {
@@ -15,11 +15,12 @@ interface InitWizardProps {
 type Step =
   | 'welcome'
   | 'project-check'
+  | 'dependencies-check'
+  | 'playwright-installing'
+  | 'chromium-installing'
   | 'provider'
   | 'loading-models'
   | 'model'
-  | 'chromium-check'
-  | 'chromium-installing'
   | 'done'
   | 'error';
 
@@ -29,27 +30,60 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
   const [provider, setProvider] = useState('ollama');
   const [model, setModel] = useState('');
   const [models, setModels] = useState<string[]>([]);
-  const [chromiumOk, setChromiumOk] = useState(false);
+  const [needsChromiumInstall, setNeedsChromiumInstall] = useState(false);
+  const [needsPlaywrightInstall, setNeedsPlaywrightInstall] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [cwd] = useState(() => process.cwd());
 
   // Check if project is Next.js
   useEffect(() => {
     if (step !== 'project-check') return;
-    try {
-      const pkgPath = resolve(cwd, 'package.json');
-      const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
-      const hasNext = !!(pkg.dependencies?.next || pkg.devDependencies?.next);
-      if (!hasNext) {
-        setErrorMsg('qagent currently works with Next.js projects only. Please ensure Next.js is installed.');
+    (async () => {
+      try {
+        const pkgPath = resolve(cwd, 'package.json');
+        const { readFile } = await import('node:fs/promises');
+        const pkgContent = await readFile(pkgPath, 'utf8');
+        const pkg = JSON.parse(pkgContent);
+        const hasNext = !!(pkg.dependencies?.next || pkg.devDependencies?.next);
+        if (!hasNext) {
+          setErrorMsg('qagent currently works with Next.js projects only. Please ensure Next.js is installed.');
+          setStep('error');
+        } else {
+          setStep('dependencies-check');
+        }
+      } catch {
+        setErrorMsg('Could not read package.json. Ensure you are in a valid Node.js project directory.');
         setStep('error');
-      } else {
-        setStep('provider');
       }
-    } catch {
-      setErrorMsg('Could not read package.json. Ensure you are in a valid Node.js project directory.');
-      setStep('error');
-    }
+    })();
+  }, [step, cwd]);
+
+  // Check dependencies (Playwright + Chromium)
+  useEffect(() => {
+    if (step !== 'dependencies-check') return;
+    (async () => {
+      try {
+        const pkgPath = resolve(cwd, 'package.json');
+        const { readFile } = await import('node:fs/promises');
+        const pkgContent = await readFile(pkgPath, 'utf8');
+        const pkg = JSON.parse(pkgContent);
+        const hasPlaywright = !!(pkg.dependencies?.['@playwright/test'] || pkg.devDependencies?.['@playwright/test']);
+        if (!hasPlaywright) {
+          setNeedsPlaywrightInstall(true);
+          return;
+        }
+
+        const ok = await detectPlaywrightBrowsers(cwd);
+        if (ok) {
+          setStep('provider');
+        } else {
+          setNeedsChromiumInstall(true);
+        }
+      } catch {
+        setErrorMsg('Could not check dependencies. Ensure @playwright/test is installed.');
+        setStep('error');
+      }
+    })();
   }, [step, cwd]);
 
   // Fetch models for selected provider
@@ -94,19 +128,6 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
     })();
   }, [step]);
 
-  // Check Chromium once model is picked
-  useEffect(() => {
-    if (step !== 'chromium-check') return;
-    (async () => {
-      const ok = await detectPlaywrightBrowsers(cwd);
-      if (ok) {
-        setChromiumOk(true);
-        setStep('done');
-      }
-      // else stay on chromium-check to show the prompt
-    })();
-  }, [step]);
-
   // Install Chromium
   useEffect(() => {
     if (step !== 'chromium-installing') return;
@@ -114,8 +135,8 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
       try {
         const ok = await ensurePlaywrightBrowsers(cwd);
         if (ok) {
-          setChromiumOk(true);
-          setStep('done');
+          setNeedsChromiumInstall(false);
+          setStep('provider');
         } else {
           setErrorMsg('Chromium install failed. Run manually: npx playwright install chromium');
           setStep('error');
@@ -126,6 +147,39 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
       }
     })();
   }, [step]);
+
+  // Install Playwright
+  useEffect(() => {
+    if (step !== 'playwright-installing') return;
+    (async () => {
+      try {
+        const pm = detectPackageManager(cwd);
+        const command = pm.addDevArgs('@playwright/test');
+        const { spawn } = await import('node:child_process');
+        const child = spawn(pm.name, command, {
+          cwd,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        const stderr: string[] = [];
+        child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk.toString()));
+        await new Promise<void>((resolve, reject) => {
+          child.on('exit', (code) => {
+            if (code === 0) {
+              resolve();
+            } else {
+              reject(new Error(`Package manager install failed: ${stderr.join('')}`));
+            }
+          });
+          child.on('error', reject);
+        });
+        setNeedsPlaywrightInstall(false);
+        setStep('dependencies-check'); // Re-check dependencies
+      } catch (err) {
+        setErrorMsg(`Playwright install failed: ${err instanceof Error ? err.message : String(err)}`);
+        setStep('error');
+      }
+    })();
+  }, [step, cwd]);
 
   // Write config when done
   useEffect(() => {
@@ -209,13 +263,35 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
             items={models.map((m) => ({ label: m, value: m }))}
             onSelect={(item) => {
               setModel(item.value);
-              setStep('chromium-check');
+              setStep('done');
             }}
           />
         </Box>
       )}
 
-      {step === 'chromium-check' && !chromiumOk && (
+      {step === 'dependencies-check' && needsPlaywrightInstall && (
+        <Box flexDirection="column">
+          <Text color="yellow">⚠  @playwright/test not found — required for browser tests.</Text>
+          <Text> </Text>
+          <Text>Install it now?</Text>
+          <SelectInput
+            items={[
+              { label: 'Yes, install @playwright/test', value: 'yes' },
+              { label: 'No, I\'ll do it manually later', value: 'no' },
+            ]}
+            onSelect={(item) => {
+              if (item.value === 'yes') {
+                setStep('playwright-installing');
+              } else {
+                setErrorMsg('Aborted. Run `npm install --save-dev @playwright/test` then retry qagent init.');
+                setStep('error');
+              }
+            }}
+          />
+        </Box>
+      )}
+
+      {step === 'dependencies-check' && needsChromiumInstall && (
         <Box flexDirection="column">
           <Text color="yellow">⚠  Playwright Chromium not found — required for browser tests.</Text>
           <Text> </Text>
@@ -240,6 +316,13 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
       {step === 'chromium-installing' && (
         <Box flexDirection="column">
           <Text color="cyan">Installing Chromium via Playwright...</Text>
+          <Text dimColor>This may take a minute.</Text>
+        </Box>
+      )}
+
+      {step === 'playwright-installing' && (
+        <Box flexDirection="column">
+          <Text color="cyan">Installing @playwright/test...</Text>
           <Text dimColor>This may take a minute.</Text>
         </Box>
       )}

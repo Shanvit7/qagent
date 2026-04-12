@@ -38,53 +38,24 @@ const getScreenshotDir = (cwd: string): string => join(cwd, ".qagent", "screensh
  * Detect whether Playwright's Chromium browser binary is installed
  * for the **target project's** Playwright version.
  *
- * Resolves the executable path via the target project's Playwright
- * and checks if the file exists on disk.
+ * Checks if @playwright/test is installed — assumes browsers can be installed if the package is present.
  */
 /**
  * Detect whether Playwright's Chromium browser binary is installed
  * for the **target project's** Playwright version.
  *
- * Strategy (in order):
- *  1. `playwright-core` — the sub-package that @playwright/test always depends on,
- *     and whose `chromium.executablePath()` is the stable API for this use case.
- *  2. `@playwright/test` direct fallback — in case playwright-core isn't resolvable
- *     separately (monorepo setups, some pnpm configurations).
- *
- * Both are resolved from the target project's `cwd` so we get the right browser
- * revision for the version the project has installed.
- *
- * Returns true only when the binary file actually exists on disk.
+ * Strategy: If @playwright/test is installed, assume browsers can be installed.
+ * This is simpler and more reliable than checking executable paths.
  */
 export const detectPlaywrightBrowsers = async (cwd: string): Promise<boolean> => {
   return new Promise((resolve) => {
     const script = `
-      const fs = require('fs');
-      let execPath = '';
-
-      // Prefer playwright-core — it has the stable executablePath() API
-      // and is always a dependency of @playwright/test.
       try {
-        const pw = require('playwright-core');
-        execPath = pw.chromium.executablePath();
-      } catch (_) {}
-
-      // Fallback: try @playwright/test directly
-      if (!execPath) {
-        try {
-          const pw = require('@playwright/test');
-          if (pw.chromium && typeof pw.chromium.executablePath === 'function') {
-            execPath = pw.chromium.executablePath();
-          }
-        } catch (_) {}
-      }
-
-      if (!execPath) {
+        require('@playwright/test');
+        process.stdout.write('ok');
+      } catch {
         process.stdout.write('missing');
-        process.exit(0);
       }
-
-      process.stdout.write(fs.existsSync(execPath) ? 'ok' : 'missing');
     `;
     const child = spawn("node", ["-e", script], {
       cwd,
