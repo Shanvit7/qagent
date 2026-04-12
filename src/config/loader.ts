@@ -1,13 +1,12 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { homedir } from "node:os";
 import type { QAgentConfig } from "./types";
 import type { ProviderName } from "@/providers/index";
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
 const SKILL_FILE    = "qagent-skill.md";
-const RC_FILE       = `${homedir()}/.qagentrc`;
+const RC_FILE       = resolve(process.cwd(), ".qagentrc");
 
 // ─── ~/.qagentrc  (provider=<name> + model=<name>) ──────────────────────────
 

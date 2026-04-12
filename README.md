@@ -29,8 +29,8 @@ Stage a file. qagent runs a pipeline:
 ## Usage
 
 ```bash
-# Setup — select AI provider, pick model, verify Chromium
-qagent init
+# First run in a project — setup wizard (auto-detects if needed)
+qagent
 
 # Watch mode — QA runs automatically on every git add
 qagent watch
@@ -94,6 +94,7 @@ test("user can toggle the mobile menu", async ({ page }) => {
 
 | Command                        | Description                                          |
 |--------------------------------|------------------------------------------------------|
+| `qagent`                       | Run init if project not configured, else show help   |
 | `qagent init`                  | Setup wizard — provider, model, Chromium check       |
 | `qagent watch`                 | Run QA automatically on every `git add`              |
 | `qagent run`                   | One-shot QA on currently staged files                |
@@ -143,7 +144,7 @@ Select provider and model during `qagent init`, or switch at any time with `qage
 
 | File               | Purpose                                    |
 |--------------------|--------------------------------------------|
-| `~/.qagentrc`      | Global AI provider and model               |
+| `.qagentrc`        | Project AI provider and model              |
 | `qagent-skill.md`  | Project context for AI (optional)          |
 | `.env.local`       | Target project env — auto-loaded by qagent |
 

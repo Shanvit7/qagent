@@ -4,13 +4,17 @@ import SelectInput from 'ink-select-input';
 import { isOllamaRunning, listOllamaModels, listOpenAIModels, listAnthropicModels } from '@/providers/index';
 import { writeProvider, writeModel } from '@/config/loader';
 import { detectPlaywrightBrowsers, ensurePlaywrightBrowsers } from '@/runner/index';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 interface InitWizardProps {
   onComplete: () => void;
+  version: string;
 }
 
 type Step =
   | 'welcome'
+  | 'project-check'
   | 'provider'
   | 'loading-models'
   | 'model'
@@ -19,7 +23,7 @@ type Step =
   | 'done'
   | 'error';
 
-export const InitWizard: React.FC<InitWizardProps> = ({ onComplete }) => {
+export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) => {
   const { exit } = useApp();
   const [step, setStep] = useState<Step>('welcome');
   const [provider, setProvider] = useState('ollama');
@@ -28,6 +32,25 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete }) => {
   const [chromiumOk, setChromiumOk] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [cwd] = useState(() => process.cwd());
+
+  // Check if project is Next.js
+  useEffect(() => {
+    if (step !== 'project-check') return;
+    try {
+      const pkgPath = resolve(cwd, 'package.json');
+      const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+      const hasNext = !!(pkg.dependencies?.next || pkg.devDependencies?.next);
+      if (!hasNext) {
+        setErrorMsg('qagent currently works with Next.js projects only. Please ensure Next.js is installed.');
+        setStep('error');
+      } else {
+        setStep('provider');
+      }
+    } catch {
+      setErrorMsg('Could not read package.json. Ensure you are in a valid Node.js project directory.');
+      setStep('error');
+    }
+  }, [step, cwd]);
 
   // Fetch models for selected provider
   useEffect(() => {
@@ -130,7 +153,7 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete }) => {
           <Text color="cyan">{"  ╚██████╔╝██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║   "}</Text>
           <Text color="cyan">{"   ╚══▀▀═╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝  "}</Text>
           <Text color="cyan">{"  ◉ change-aware behavioral regression testing           "}</Text>
-          <Text dimColor>{"   Real tests. Real browser. Zero maintenance.    v0.1.3  "}</Text>
+          <Text dimColor>{`   Real tests. Real browser. Zero maintenance.    v${version}  `}</Text>
           <Text> </Text>
           <Text bold>Welcome to qagent setup!</Text>
           <Text>QA runs automatically on every <Text color="cyan">git add</Text> via <Text color="cyan">qagent watch</Text>.</Text>
@@ -143,10 +166,16 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete }) => {
               { label: 'No, cancel', value: 'no' },
             ]}
             onSelect={(item) => {
-              if (item.value === 'yes') setStep('provider');
+              if (item.value === 'yes') setStep('project-check');
               else process.exit(0);
             }}
           />
+        </Box>
+      )}
+
+      {step === 'project-check' && (
+        <Box flexDirection="column">
+          <Text color="cyan">Checking project compatibility...</Text>
         </Box>
       )}
 
