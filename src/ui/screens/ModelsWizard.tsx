@@ -1,16 +1,8 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import SelectInput from 'ink-select-input';
-import {
-  readProvider,
-  readModel,
-  writeProvider,
-  writeModel,
-} from '@/config/loader';
-import {
-  listOllamaModels,
-  isOllamaRunning,
-} from '@/providers/index';
+import { readProvider, readModel, writeProvider, writeModel } from '@/config/loader';
+import { listOllamaModels, isOllamaRunning } from '@/providers/index';
 
 interface ModelsWizardProps {
   onComplete: () => void;
@@ -33,7 +25,9 @@ export const ModelsWizard: React.FC<ModelsWizardProps> = ({ onComplete }) => {
             <Text color="cyan">qagent models</Text>
             <Text>{''}</Text>
             {currentProvider && currentModel && (
-              <Text>Active: <Text bold>{currentModel}</Text> <Text dimColor>({currentProvider})</Text></Text>
+              <Text>
+                Active: <Text bold>{currentModel}</Text> <Text dimColor>({currentProvider})</Text>
+              </Text>
             )}
             {!currentProvider && !currentModel && (
               <Text color="yellow">No model configured yet.</Text>
@@ -53,7 +47,7 @@ export const ModelsWizard: React.FC<ModelsWizardProps> = ({ onComplete }) => {
             if (running) {
               const availableModels = await listOllamaModels();
               const codeModels = availableModels.filter((m) =>
-                /coder|code|deepseek|qwen|mistral|llama/i.test(m)
+                /coder|code|deepseek|qwen|mistral|llama/i.test(m),
               );
               const sorted = [...new Set([...codeModels, ...availableModels])];
               setModels(sorted);
@@ -79,9 +73,9 @@ export const ModelsWizard: React.FC<ModelsWizardProps> = ({ onComplete }) => {
               <Text color="red">No Ollama models available.</Text>
               <Text>{''}</Text>
               <Text>Pull a model first:</Text>
-              <Text color="cyan">  ollama pull qwen2.5-coder:7b</Text>
-              <Text color="cyan">  ollama pull deepseek-coder:6.7b</Text>
-              <Text color="cyan">  ollama pull llama3.1:8b</Text>
+              <Text color="cyan"> ollama pull qwen2.5-coder:7b</Text>
+              <Text color="cyan"> ollama pull deepseek-coder:6.7b</Text>
+              <Text color="cyan"> ollama pull llama3.1:8b</Text>
               <Text>{''}</Text>
               <Text>Press Enter to continue...</Text>
             </Box>
@@ -105,7 +99,9 @@ export const ModelsWizard: React.FC<ModelsWizardProps> = ({ onComplete }) => {
       case 2: // Save
         return (
           <Box flexDirection="column">
-            <Text color="green">Model: <Text bold>{model}</Text> <Text dimColor>(ollama)</Text></Text>
+            <Text color="green">
+              Model: <Text bold>{model}</Text> <Text dimColor>(ollama)</Text>
+            </Text>
             <Text>Stored in ~/.qagentrc</Text>
             <Text>{''}</Text>
             <Text>Press Enter to continue...</Text>

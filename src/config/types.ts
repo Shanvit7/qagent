@@ -1,4 +1,4 @@
-import type { ProviderName } from "@/providers/index";
+import type { ProviderName } from '@/providers/index';
 
 export interface AiConfig {
   provider: ProviderName;

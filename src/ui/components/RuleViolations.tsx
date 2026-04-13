@@ -22,29 +22,37 @@ export const RuleViolations: React.FC<RuleViolationsProps> = ({ violations }) =>
     );
   }
 
-  const critical = violations.filter(v => v.severity === 'critical').length;
-  const major = violations.filter(v => v.severity === 'major').length;
-  const minor = violations.filter(v => v.severity === 'minor').length;
+  const critical = violations.filter((v) => v.severity === 'critical').length;
+  const major = violations.filter((v) => v.severity === 'major').length;
+  const minor = violations.filter((v) => v.severity === 'minor').length;
 
   return (
     <Box flexDirection="column">
-      <Text bold color="red">Rule Violations</Text>
+      <Text bold color="red">
+        Rule Violations
+      </Text>
       <Text>
         Critical: {critical} | Major: {major} | Minor: {minor}
       </Text>
 
       {violations.map((violation, index) => (
         <Box key={index} marginLeft={2} flexDirection="column">
-          <Text color={
-            violation.severity === 'critical' ? 'red' :
-            violation.severity === 'major' ? 'yellow' : 'blue'
-          }>
+          <Text
+            color={
+              violation.severity === 'critical'
+                ? 'red'
+                : violation.severity === 'major'
+                  ? 'yellow'
+                  : 'blue'
+            }
+          >
             {violation.severity.toUpperCase()}: {violation.rule}
           </Text>
           <Text>{violation.message}</Text>
           {violation.file && (
             <Text dimColor>
-              {violation.file}{violation.line ? `:${violation.line}` : ''}
+              {violation.file}
+              {violation.line ? `:${violation.line}` : ''}
             </Text>
           )}
         </Box>

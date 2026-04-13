@@ -6,10 +6,10 @@
  * to the AI alongside error messages for better diagnosis.
  */
 
-import type { AiConfig } from "@/config/types";
-import type { FileAnalysis } from "@/analyzer/index";
-import { generate } from "@/providers/index";
-import type { ChangeRegion } from "@/classifier/index";
+import type { AiConfig } from '@/config/types';
+import type { FileAnalysis } from '@/analyzer/index';
+import { generate } from '@/providers/index';
+import type { ChangeRegion } from '@/classifier/index';
 import {
   type GradingCriterion,
   type EvaluationScore,
@@ -19,7 +19,7 @@ import {
   allCriteriaPassed,
   buildCriteriaPromptSection,
   buildCriteriaForRegions,
-} from "./criteria";
+} from './criteria';
 
 // ─── Shared rules ─────────────────────────────────────────────────────────────
 
@@ -60,7 +60,11 @@ const buildEvaluatorPrompt = (
   filePath: string,
   componentType: string,
   criteria: readonly GradingCriterion[],
-  failedTests?: Array<{ name: string; error?: string | undefined; screenshotPath?: string | undefined }>,
+  failedTests?: Array<{
+    name: string;
+    error?: string | undefined;
+    screenshotPath?: string | undefined;
+  }>,
   previousCritique?: string | undefined,
   iteration?: number | undefined,
 ): string => {
@@ -83,14 +87,16 @@ A test scores LOW (1-4) when:
   const historyBlock = previousCritique
     ? `## Previous critique (iteration ${(iteration ?? 1) - 1}) — flag if issues persist
 ${previousCritique}`
-    : "";
+    : '';
 
   const failureBlock = failedTests?.length
     ? `## Runtime failures — diagnose each before scoring
-${failedTests.map((t) => {
-  const screenshot = t.screenshotPath ? `\n  Screenshot saved: ${t.screenshotPath}` : "";
-  return `**"${t.name}"**\n\`\`\`\n${t.error ?? "unknown error"}\n\`\`\`${screenshot}`;
-}).join("\n\n")}
+${failedTests
+  .map((t) => {
+    const screenshot = t.screenshotPath ? `\n  Screenshot saved: ${t.screenshotPath}` : '';
+    return `**"${t.name}"**\n\`\`\`\n${t.error ?? 'unknown error'}\n\`\`\`${screenshot}`;
+  })
+  .join('\n\n')}
 
 For each failure, determine:
 - **network-blocked** — the test timed out waiting for an outcome that requires a server mutation (POST/PUT/PATCH/DELETE).
@@ -104,9 +110,7 @@ For each failure, determine:
   → Fix: add explicit wait before the assertion
 - **real-bug** — the app genuinely doesn't behave as the test expects
   → Note this in fixSuggestions so the developer can investigate`
-    : "";
-
-
+    : '';
 
   return `You are a strict QA evaluator for Playwright browser tests. Your job is to catch weak, shallow, or broken tests before they ship.
 
@@ -152,8 +156,11 @@ const parseEvaluatorResponse = (
   iteration: number,
 ): EvaluationResult => {
   let cleaned = raw.trim();
-  if (cleaned.startsWith("```")) {
-    cleaned = cleaned.replace(/^```[a-z]*\n?/, "").replace(/\n?```$/, "").trim();
+  if (cleaned.startsWith('```')) {
+    cleaned = cleaned
+      .replace(/^```[a-z]*\n?/, '')
+      .replace(/\n?```$/, '')
+      .trim();
   }
 
   try {
@@ -171,7 +178,7 @@ const parseEvaluatorResponse = (
       return {
         criterion: s.criterion,
         score: Math.max(1, Math.min(10, s.score)),
-        reasoning: s.reasoning ?? "",
+        reasoning: s.reasoning ?? '',
         passed: s.score >= threshold,
       };
     });
@@ -183,9 +190,11 @@ const parseEvaluatorResponse = (
     // so the refinement prompt has concrete steps, not just prose criticism
     const fixLines = (parsed.fixSuggestions ?? []).filter(Boolean);
     const critique = [
-      parsed.critique ?? "No critique provided.",
-      fixLines.length > 0 ? `\nFixes needed:\n${fixLines.map((f) => `- ${f}`).join("\n")}` : "",
-    ].filter(Boolean).join("");
+      parsed.critique ?? 'No critique provided.',
+      fixLines.length > 0 ? `\nFixes needed:\n${fixLines.map((f) => `- ${f}`).join('\n')}` : '',
+    ]
+      .filter(Boolean)
+      .join('');
 
     return { scores, overallScore: overall, passed, critique, iteration };
   } catch {
@@ -193,12 +202,12 @@ const parseEvaluatorResponse = (
       scores: criteria.map((c) => ({
         criterion: c.name,
         score: 5,
-        reasoning: "Evaluator response could not be parsed",
+        reasoning: 'Evaluator response could not be parsed',
         passed: 5 >= c.threshold,
       })),
       overallScore: 5,
       passed: false,
-      critique: "Evaluator response was not valid JSON. Regenerate tests.",
+      critique: 'Evaluator response was not valid JSON. Regenerate tests.',
       iteration,
     };
   }
@@ -209,7 +218,9 @@ const parseEvaluatorResponse = (
 export interface EvaluateTestsOptions {
   criteria?: readonly GradingCriterion[] | undefined;
   changedRegions?: ChangeRegion[] | undefined;
-  failedTests?: Array<{ name: string; error?: string | undefined; screenshotPath?: string | undefined }> | undefined;
+  failedTests?:
+    | Array<{ name: string; error?: string | undefined; screenshotPath?: string | undefined }>
+    | undefined;
   previousCritique?: string | undefined;
   iteration?: number | undefined;
 }
@@ -242,7 +253,7 @@ export const evaluateTests = async (
 
 // ─── Refinement prompt ────────────────────────────────────────────────────────
 
-export type RefinementKind = "quality" | "runtime";
+export type RefinementKind = 'quality' | 'runtime';
 
 export interface RefinementContext {
   testCode: string;
@@ -261,39 +272,39 @@ export const buildRefinementPrompt = (ctx: RefinementContext): string => {
     `You wrote Playwright tests for \`${ctx.filePath}\` (route: \`${ctx.route}\`).`,
     `Iteration ${ctx.iteration} — fix the specific issues below. Do NOT rewrite from scratch.`,
     `Do NOT change tests that are currently passing.`,
-    "",
+    '',
     `## Source code — re-read to find correct selectors`,
-    "```tsx",
+    '```tsx',
     ctx.sourceCode,
-    "```",
-    "",
+    '```',
+    '',
     `## Your current test code`,
-    "```ts",
+    '```ts',
     ctx.testCode,
-    "```",
-    "",
+    '```',
+    '',
   ];
 
   const usesServerRequests = SERVER_CALL_REGEX.test(ctx.testCode);
   if (usesServerRequests) {
     sections.push(
-      "## Replace page.request with UI-driven flow",
-      "These tests use page.request.* or APIRequestContext directly. Always drive through the browser UI instead.",
-      "The dev server is running with real env vars — server-side code works. But test through the page, not raw HTTP.",
-      "Example:",
-      "```ts",
-      "// ❌ Bad — bypasses the UI",
+      '## Replace page.request with UI-driven flow',
+      'These tests use page.request.* or APIRequestContext directly. Always drive through the browser UI instead.',
+      'The dev server is running with real env vars — server-side code works. But test through the page, not raw HTTP.',
+      'Example:',
+      '```ts',
+      '// ❌ Bad — bypasses the UI',
       'const res = await page.request.get("/api/data");',
-      "expect(res.status()).toBe(200);",
-      "",
-      "// ✅ Good — tests through the real UI",
+      'expect(res.status()).toBe(200);',
+      '',
+      '// ✅ Good — tests through the real UI',
       'await page.goto("/dashboard");',
       'await page.getByRole("button", { name: /refresh/i }).click();',
       "await page.waitForResponse(resp => resp.url().includes('/api/data') && resp.ok());",
       'await expect(page.getByRole("row", { name: /invoice/i })).toBeVisible();',
-      "```",
-      "Replace every page.request call with the equivalent UI interaction.",
-      "",
+      '```',
+      'Replace every page.request call with the equivalent UI interaction.',
+      '',
     );
   }
 
@@ -301,58 +312,63 @@ export const buildRefinementPrompt = (ctx: RefinementContext): string => {
   // If any failing test timed out while asserting a UI element that likely lives
   // behind an animation (menu, drawer, dialog, accordion, tab), inject concrete
   // wait guidance — the generic timeout fix never surfaces this root cause.
-  const ANIMATION_TRIGGER_RE = /menu|drawer|modal|dialog|accordion|tab|collapse|slide|fade|dropdown/i;
-  const animationFailed = ctx.failedTests?.some((t) => {
-    const isTimeout = /TimeoutError|waiting for|locator\.nth|toBeVisible|toHaveAttribute/i.test(t.error ?? "");
-    const targetIsAnimated = ANIMATION_TRIGGER_RE.test(t.name) || ANIMATION_TRIGGER_RE.test(ctx.testCode);
-    return isTimeout && targetIsAnimated;
-  }) ?? false;
+  const ANIMATION_TRIGGER_RE =
+    /menu|drawer|modal|dialog|accordion|tab|collapse|slide|fade|dropdown/i;
+  const animationFailed =
+    ctx.failedTests?.some((t) => {
+      const isTimeout = /TimeoutError|waiting for|locator\.nth|toBeVisible|toHaveAttribute/i.test(
+        t.error ?? '',
+      );
+      const targetIsAnimated =
+        ANIMATION_TRIGGER_RE.test(t.name) || ANIMATION_TRIGGER_RE.test(ctx.testCode);
+      return isTimeout && targetIsAnimated;
+    }) ?? false;
 
   if (animationFailed) {
     sections.push(
-      "## Animation / CSS transition timing",
-      "One or more failures are most likely animation race conditions — the assertion ran before",
-      "the element finished entering. This is common with CSS transitions, JS-driven show/hide",
+      '## Animation / CSS transition timing',
+      'One or more failures are most likely animation race conditions — the assertion ran before',
+      'the element finished entering. This is common with CSS transitions, JS-driven show/hide',
       "that doesn't update aria-hidden synchronously, and animated component libraries.",
-      "",
-      "Fix pattern — wait for the element to be stable BEFORE asserting it:",
-      "```ts",
-      "// After clicking a trigger that starts an animation:",
+      '',
+      'Fix pattern — wait for the element to be stable BEFORE asserting it:',
+      '```ts',
+      '// After clicking a trigger that starts an animation:',
       "await page.getByRole('button', { name: /open menu/i }).click();",
-      "// Wait for the animated element to reach its final visible state",
-      "await page.waitForSelector('[data-state=\"open\"], [aria-expanded=\"true\"], nav.open', { state: 'visible' });",
-      "// OR wait for a known child element inside the animated container:",
+      '// Wait for the animated element to reach its final visible state',
+      'await page.waitForSelector(\'[data-state="open"], [aria-expanded="true"], nav.open\', { state: \'visible\' });',
+      '// OR wait for a known child element inside the animated container:',
       "await page.waitForSelector('nav a[href=\"/contact\"]', { state: 'visible' });",
-      "// THEN assert",
+      '// THEN assert',
       "await expect(page.getByRole('link', { name: /contact/i })).toBeVisible();",
-      "```",
-      "If the component uses a JS animation library or custom CSS transition, there is no reliable",
-      "aria signal during the animation — use waitForSelector with a short timeout (2000ms)",
-      "targeting the final DOM state (e.g. a data-attribute, aria-expanded, or a child element).",
-      "",
+      '```',
+      'If the component uses a JS animation library or custom CSS transition, there is no reliable',
+      'aria signal during the animation — use waitForSelector with a short timeout (2000ms)',
+      'targeting the final DOM state (e.g. a data-attribute, aria-expanded, or a child element).',
+      '',
     );
   }
 
   // Runtime failures — most actionable signal
-  if (ctx.kind === "runtime" && ctx.failedTests?.length) {
+  if (ctx.kind === 'runtime' && ctx.failedTests?.length) {
     sections.push(`## ${ctx.failedTests.length} test(s) failing at runtime — fix these first`);
     for (const t of ctx.failedTests) {
-      const msg = t.error?.slice(0, 600) ?? "unknown error";
-      const isStrictMode   = msg.includes("strict mode violation") || msg.includes("resolved to");
-      const isTimeout      = msg.includes("TimeoutError") || msg.includes("waiting for");
+      const msg = t.error?.slice(0, 600) ?? 'unknown error';
+      const isStrictMode = msg.includes('strict mode violation') || msg.includes('resolved to');
+      const isTimeout = msg.includes('TimeoutError') || msg.includes('waiting for');
 
       // Detect network-blocked: timeout + test code contains success/confirmation assertions
       // after a click — this is the "guard blocked the POST, success message never appeared" pattern
-      const hasSubmitClick = ctx.testCode.includes(".click(") || ctx.testCode.includes(".click()");
+      const hasSubmitClick = ctx.testCode.includes('.click(') || ctx.testCode.includes('.click()');
       const hasSuccessAssert = /success|thank.you|submitted|confirmed|redirect/i.test(ctx.testCode);
       const isNetworkBlocked = isTimeout && hasSubmitClick && hasSuccessAssert;
 
       // Extract what the locator was, e.g. "locator('header') resolved to 2 elements"
       const strictMatch = msg.match(/locator\(([^)]+)\)\s+resolved to (\d+) elements/);
-      const locatorStr  = strictMatch ? strictMatch[1] : null;
-      const countStr    = strictMatch ? strictMatch[2] : null;
+      const locatorStr = strictMatch ? strictMatch[1] : null;
+      const countStr = strictMatch ? strictMatch[2] : null;
 
-      sections.push(`### ❌ "${t.name}"`, "```", msg, "```", "");
+      sections.push(`### ❌ "${t.name}"`, '```', msg, '```', '');
 
       if (isNetworkBlocked) {
         sections.push(
@@ -375,23 +391,25 @@ export const buildRefinementPrompt = (ctx: RefinementContext): string => {
           `await expect(page.getByText(/error|unavailable|try again/i)).toBeVisible();`,
           `\`\`\``,
           `Pick the option that matches what the source code actually renders on validation failure.`,
-          "",
+          '',
         );
       } else if (isStrictMode) {
         sections.push(
-          `**Fix — strict mode violation${locatorStr ? ` on ${locatorStr}` : ""}:**`,
-          `Your selector matched ${countStr ?? "multiple"} elements. Responsive layouts duplicate elements (desktop + mobile hidden via CSS).`,
+          `**Fix — strict mode violation${locatorStr ? ` on ${locatorStr}` : ''}:**`,
+          `Your selector matched ${countStr ?? 'multiple'} elements. Responsive layouts duplicate elements (desktop + mobile hidden via CSS).`,
           `Choose the fix that matches what you see in the source code above:`,
           `- Scope to first visible: \`page.locator("header").first()\``,
           `- Filter by content: \`page.locator("nav").filter({ hasText: /specific text/i })\``,
           `- Use a unique parent: \`page.locator("#desktop-nav a", { hasText: /about/i })\``,
           `- For images: \`page.getByRole("img", { name: /logo/i }).first()\``,
           `Re-read the JSX above — find an attribute or wrapper that exists on only ONE of the duplicates and use that.`,
-          "",
+          '',
         );
       } else if (isTimeout) {
         // Check if this looks like a stale locator after toggle (common pattern)
-        const isToggleStale = msg.includes("toHaveAttribute") && (msg.includes("aria-label") || msg.includes("aria-expanded"));
+        const isToggleStale =
+          msg.includes('toHaveAttribute') &&
+          (msg.includes('aria-label') || msg.includes('aria-expanded'));
         if (isToggleStale) {
           sections.push(
             `**Fix — stale locator after toggle interaction:**`,
@@ -403,7 +421,7 @@ export const buildRefinementPrompt = (ctx: RefinementContext): string => {
             `const closeBtn = page.getByRole("button", { name: "Close menu" });`,
             `await expect(closeBtn).toHaveAttribute("aria-label", "Close menu");`,
             `\`\`\``,
-            "",
+            '',
           );
         } else {
           sections.push(
@@ -413,7 +431,7 @@ export const buildRefinementPrompt = (ctx: RefinementContext): string => {
             `3. Check the route — does \`${ctx.route}\` actually render this component?`,
             `4. If the element only exists at a certain viewport, call \`page.setViewportSize()\` BEFORE \`page.goto()\``,
             `5. If the element appears after interaction, add a \`waitFor\` before the assertion`,
-            "",
+            '',
           );
         }
       } else {
@@ -421,7 +439,7 @@ export const buildRefinementPrompt = (ctx: RefinementContext): string => {
           `**Fix:**`,
           `1. If the error is a selector mismatch — re-read the source code and use exact text/role/label`,
           `2. If it's an app error (404, crash) — adjust the assertion to match what the app actually shows`,
-          "",
+          '',
         );
       }
     }
@@ -437,7 +455,7 @@ export const buildRefinementPrompt = (ctx: RefinementContext): string => {
       for (const s of failed) {
         sections.push(`- **${s.criterion}** scored ${s.score}/10: ${s.reasoning}`);
       }
-      sections.push("");
+      sections.push('');
     }
 
     if (passed.length > 0) {
@@ -445,12 +463,16 @@ export const buildRefinementPrompt = (ctx: RefinementContext): string => {
       for (const s of passed) {
         sections.push(`- **${s.criterion}** (${s.score}/10) ✓`);
       }
-      sections.push("");
+      sections.push('');
     }
 
-    sections.push(`## Evaluator critique and specific fixes:`, ctx.evaluation.critique, "");
+    sections.push(`## Evaluator critique and specific fixes:`, ctx.evaluation.critique, '');
   } else if (ctx.previousCritique) {
-    sections.push(`## Previous critique (iteration ${ctx.iteration - 1}):`, ctx.previousCritique, "");
+    sections.push(
+      `## Previous critique (iteration ${ctx.iteration - 1}):`,
+      ctx.previousCritique,
+      '',
+    );
   }
 
   sections.push(
@@ -460,11 +482,16 @@ export const buildRefinementPrompt = (ctx: RefinementContext): string => {
     `- For selector fixes: look up the correct value in the source code above — do not guess`,
     `- For assertion depth fixes: replace bare \`toBeVisible()\` with \`toContainText()\`, \`toHaveValue()\`, or \`toHaveURL()\``,
     `- For test naming fixes: rename to a user-story format: "user does X and sees Y"`,
-    "",
+    '',
     HARD_RULES,
   );
 
-  return sections.join("\n");
+  return sections.join('\n');
 };
 
-export { DEFAULT_CRITERIA, type GradingCriterion, type EvaluationScore, type EvaluationResult } from "./criteria";
+export {
+  DEFAULT_CRITERIA,
+  type GradingCriterion,
+  type EvaluationScore,
+  type EvaluationResult,
+} from './criteria';

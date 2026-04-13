@@ -24,7 +24,7 @@ export const askYesNo = async (q: string, defaultYes = true): Promise<boolean> =
             resolve(val ?? defaultYes);
           }}
         />
-      </Box>
+      </Box>,
     );
   });
 };
@@ -58,25 +58,22 @@ export const askMultiSelect = async <T extends string>(
   prompt: string,
   options: { label: string; value: T; description?: string; default?: boolean }[],
 ): Promise<T[]> => {
-  const selected = await askChoice(prompt, options.map(o => o.label));
+  const selected = await askChoice(
+    prompt,
+    options.map((o) => o.label),
+  );
   const item = options[selected];
   if (!item) return [];
   return [item.value];
 };
 
 /** Ask for a secret/API key (masked input). */
-export const askSecret = async (q: string): Promise<string> => {
+export const askSecret = async (_q: string): Promise<string> => {
   return new Promise((resolve) => {
     const App = () => {
       const [value, setValue] = React.useState('');
 
-      return (
-        <TextInput
-          value={value}
-          onChange={setValue}
-          onSubmit={resolve}
-        />
-      );
+      return <TextInput value={value} onChange={setValue} onSubmit={resolve} />;
     };
 
     render(<App />);

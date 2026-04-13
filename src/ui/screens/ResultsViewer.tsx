@@ -9,7 +9,7 @@ interface TestResult {
   status: 'pass' | 'fail' | 'skip';
   duration?: number;
   error?: string;
-  metrics?: any;
+  metrics?: Record<string, unknown>;
 }
 
 interface RuleViolation {
@@ -29,10 +29,10 @@ interface ResultsViewerProps {
 export const ResultsViewer: React.FC<ResultsViewerProps> = ({
   results,
   violations = [],
-  onExit
+  onExit,
 }) => {
-  const passed = results.filter(r => r.status === 'pass').length;
-  const failed = results.filter(r => r.status === 'fail').length;
+  const passed = results.filter((r) => r.status === 'pass').length;
+  const failed = results.filter((r) => r.status === 'fail').length;
   const total = results.length;
 
   const hasViolations = violations.length > 0;
@@ -47,25 +47,20 @@ export const ResultsViewer: React.FC<ResultsViewerProps> = ({
         <Text color={hasFailures ? 'red' : 'green'}>
           {hasFailures ? '❌' : '✅'} {passed}/{total} tests passed
         </Text>
-        {hasFailures && (
-          <Text color="red"> ({failed} failed)</Text>
-        )}
+        {hasFailures && <Text color="red"> ({failed} failed)</Text>}
       </Box>
 
       <TestResults results={results} />
 
       {violations && <RuleViolations violations={violations} />}
 
-      {results.some(r => r.metrics) && (
+      {results.some((r) => r.metrics) && (
         <Box marginTop={1}>
           <Text bold>Performance Summary</Text>
           {results
-            .filter(r => r.metrics)
+            .filter((r) => r.metrics)
             .map((result, index) => (
-              <PerformanceMetrics
-                key={index}
-                metrics={result.metrics}
-              />
+              <PerformanceMetrics key={index} metrics={result.metrics} />
             ))}
         </Box>
       )}
@@ -74,14 +69,11 @@ export const ResultsViewer: React.FC<ResultsViewerProps> = ({
         <Text dimColor>
           {hasViolations || hasFailures
             ? 'Review the issues above and fix them before proceeding.'
-            : 'All tests passed! Your changes look good.'
-          }
+            : 'All tests passed! Your changes look good.'}
         </Text>
       </Box>
 
-      {onExit && (
-        <Text dimColor>Press Ctrl+C to exit</Text>
-      )}
+      {onExit && <Text dimColor>Press Ctrl+C to exit</Text>}
     </Box>
   );
 };

@@ -3,7 +3,12 @@ import { Box, Text, useInput } from 'ink';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadConfig } from '@/config/loader';
-import { generate, getSessionUsage, resetSessionUsage, formatTokenSummary } from '@/providers/index';
+import {
+  generate,
+  getSessionUsage,
+  resetSessionUsage,
+  formatTokenSummary,
+} from '@/providers/index';
 
 const LAST_FAILURE_PATH = join(process.cwd(), '.qagent', 'last-failure.txt');
 
@@ -40,7 +45,9 @@ interface ExplainScreenProps {
 }
 
 export const ExplainScreen: React.FC<ExplainScreenProps> = ({ onComplete }) => {
-  const [state, setState] = React.useState<'loading' | 'success' | 'error' | 'no-failure'>('loading');
+  const [state, setState] = React.useState<'loading' | 'success' | 'error' | 'no-failure'>(
+    'loading',
+  );
   const [message, setMessage] = React.useState<string>('');
   const [explanation, setExplanation] = React.useState<string>('');
 
@@ -68,7 +75,9 @@ export const ExplainScreen: React.FC<ExplainScreenProps> = ({ onComplete }) => {
       setMessage('Asking AI to explain the failure...');
 
       try {
-        const response = await generate(config.ai, buildExplainPrompt(failureOutput), { temperature: 0.2 });
+        const response = await generate(config.ai, buildExplainPrompt(failureOutput), {
+          temperature: 0.2,
+        });
         setState('success');
         setExplanation(response.trim());
         const tokenSummary = formatTokenSummary(getSessionUsage());
@@ -100,9 +109,7 @@ export const ExplainScreen: React.FC<ExplainScreenProps> = ({ onComplete }) => {
         </>
       )}
 
-      {state === 'loading' && (
-        <Text>{message}</Text>
-      )}
+      {state === 'loading' && <Text>{message}</Text>}
 
       {state === 'error' && (
         <>

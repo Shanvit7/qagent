@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { classifyTestCode, type PreCheckResult } from "./index";
+import { describe, it, expect } from 'vitest';
+import { classifyTestCode, type PreCheckResult } from './index';
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -79,120 +79,120 @@ test("button is visible", async ({ page }) => {
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
-describe("classifyTestCode", () => {
-  it("passes a structurally correct test", () => {
+describe('classifyTestCode', () => {
+  it('passes a structurally correct test', () => {
     const result = classifyTestCode(GOOD_TEST);
     expect(result.passed).toBe(true);
     expect(result.issues).toHaveLength(0);
-    expect(result.feedback).toBe("");
+    expect(result.feedback).toBe('');
   });
 
-  describe("no-tests", () => {
-    it("detects zero test() blocks as hard-fail", () => {
+  describe('no-tests', () => {
+    it('detects zero test() blocks as hard-fail', () => {
       const result = classifyTestCode(NO_TESTS);
       expect(result.passed).toBe(false);
-      expect(result.issues).toContain("no-tests");
+      expect(result.issues).toContain('no-tests');
     });
 
-    it("includes CRITICAL in feedback", () => {
+    it('includes CRITICAL in feedback', () => {
       const result = classifyTestCode(NO_TESTS);
-      expect(result.feedback).toContain("CRITICAL");
-      expect(result.feedback).toContain("test()");
+      expect(result.feedback).toContain('CRITICAL');
+      expect(result.feedback).toContain('test()');
     });
   });
 
-  describe("no-goto", () => {
-    it("detects missing page.goto() as hard-fail", () => {
+  describe('no-goto', () => {
+    it('detects missing page.goto() as hard-fail', () => {
       const result = classifyTestCode(NO_GOTO);
       expect(result.passed).toBe(false);
-      expect(result.issues).toContain("no-goto");
+      expect(result.issues).toContain('no-goto');
     });
 
-    it("includes CRITICAL in feedback", () => {
+    it('includes CRITICAL in feedback', () => {
       const result = classifyTestCode(NO_GOTO);
-      expect(result.feedback).toContain("CRITICAL");
-      expect(result.feedback).toContain("page.goto");
+      expect(result.feedback).toContain('CRITICAL');
+      expect(result.feedback).toContain('page.goto');
     });
   });
 
-  describe("shallow-assertions", () => {
-    it("detects toBeVisible()-only assertions", () => {
+  describe('shallow-assertions', () => {
+    it('detects toBeVisible()-only assertions', () => {
       const result = classifyTestCode(SHALLOW_ASSERTIONS);
-      expect(result.issues).toContain("shallow-assertions");
+      expect(result.issues).toContain('shallow-assertions');
     });
 
-    it("does NOT flag as hard-fail (test still runs)", () => {
+    it('does NOT flag as hard-fail (test still runs)', () => {
       const result = classifyTestCode(SHALLOW_ASSERTIONS);
       expect(result.passed).toBe(true);
     });
 
-    it("includes toContainText suggestion in feedback", () => {
+    it('includes toContainText suggestion in feedback', () => {
       const result = classifyTestCode(SHALLOW_ASSERTIONS);
-      expect(result.feedback).toContain("toContainText");
+      expect(result.feedback).toContain('toContainText');
     });
 
-    it("does not flag test with deep assertions", () => {
+    it('does not flag test with deep assertions', () => {
       const result = classifyTestCode(GOOD_TEST);
-      expect(result.issues).not.toContain("shallow-assertions");
+      expect(result.issues).not.toContain('shallow-assertions');
     });
   });
 
-  describe("css-selectors", () => {
-    it("detects .class CSS selector", () => {
+  describe('css-selectors', () => {
+    it('detects .class CSS selector', () => {
       const result = classifyTestCode(CSS_SELECTORS);
-      expect(result.issues).toContain("css-selectors");
+      expect(result.issues).toContain('css-selectors');
     });
 
-    it("detects [data-testid] selector", () => {
+    it('detects [data-testid] selector', () => {
       const result = classifyTestCode(DATA_TESTID);
-      expect(result.issues).toContain("css-selectors");
+      expect(result.issues).toContain('css-selectors');
     });
 
-    it("suggests getByRole in feedback", () => {
+    it('suggests getByRole in feedback', () => {
       const result = classifyTestCode(CSS_SELECTORS);
-      expect(result.feedback).toContain("getByRole");
+      expect(result.feedback).toContain('getByRole');
     });
 
-    it("does NOT flag as hard-fail", () => {
+    it('does NOT flag as hard-fail', () => {
       const result = classifyTestCode(CSS_SELECTORS);
       expect(result.passed).toBe(true);
     });
   });
 
-  describe("flaky-timeout", () => {
-    it("detects waitForTimeout()", () => {
+  describe('flaky-timeout', () => {
+    it('detects waitForTimeout()', () => {
       const result = classifyTestCode(FLAKY_TIMEOUT);
-      expect(result.issues).toContain("flaky-timeout");
+      expect(result.issues).toContain('flaky-timeout');
     });
 
-    it("does NOT flag as hard-fail", () => {
+    it('does NOT flag as hard-fail', () => {
       const result = classifyTestCode(FLAKY_TIMEOUT);
       expect(result.passed).toBe(true);
     });
 
-    it("includes waitForSelector suggestion in feedback", () => {
+    it('includes waitForSelector suggestion in feedback', () => {
       const result = classifyTestCode(FLAKY_TIMEOUT);
-      expect(result.feedback).toContain("waitForSelector");
+      expect(result.feedback).toContain('waitForSelector');
     });
   });
 
-  describe("missing-interaction (region-aware)", () => {
-    it("flags missing-interaction when event-handler region and no click/fill", () => {
-      const result = classifyTestCode(NO_INTERACTION, ["event-handler"]);
-      expect(result.issues).toContain("missing-interaction");
+  describe('missing-interaction (region-aware)', () => {
+    it('flags missing-interaction when event-handler region and no click/fill', () => {
+      const result = classifyTestCode(NO_INTERACTION, ['event-handler']);
+      expect(result.issues).toContain('missing-interaction');
     });
 
-    it("does NOT flag missing-interaction without event-handler region", () => {
+    it('does NOT flag missing-interaction without event-handler region', () => {
       const result = classifyTestCode(NO_INTERACTION, []);
-      expect(result.issues).not.toContain("missing-interaction");
+      expect(result.issues).not.toContain('missing-interaction');
     });
 
-    it("does NOT flag missing-interaction when fill() is present", () => {
-      const result = classifyTestCode(GOOD_TEST, ["event-handler"]);
-      expect(result.issues).not.toContain("missing-interaction");
+    it('does NOT flag missing-interaction when fill() is present', () => {
+      const result = classifyTestCode(GOOD_TEST, ['event-handler']);
+      expect(result.issues).not.toContain('missing-interaction');
     });
 
-    it("does NOT flag missing-interaction when click() is present", () => {
+    it('does NOT flag missing-interaction when click() is present', () => {
       const code = `
         import { test, expect } from "@playwright/test";
         test("user clicks", async ({ page }) => {
@@ -201,43 +201,45 @@ describe("classifyTestCode", () => {
           await expect(page.getByRole("status")).toContainText("Done");
         });
       `;
-      const result = classifyTestCode(code, ["event-handler"]);
-      expect(result.issues).not.toContain("missing-interaction");
+      const result = classifyTestCode(code, ['event-handler']);
+      expect(result.issues).not.toContain('missing-interaction');
     });
 
-    it("does NOT flag missing-interaction when no-tests is also present", () => {
+    it('does NOT flag missing-interaction when no-tests is also present', () => {
       // If there are no test blocks, interaction check is skipped
-      const result = classifyTestCode(NO_TESTS, ["event-handler"]);
-      expect(result.issues).not.toContain("missing-interaction");
+      const result = classifyTestCode(NO_TESTS, ['event-handler']);
+      expect(result.issues).not.toContain('missing-interaction');
     });
   });
 
-  describe("feedback", () => {
-    it("returns empty feedback when passed with no issues", () => {
+  describe('feedback', () => {
+    it('returns empty feedback when passed with no issues', () => {
       const result = classifyTestCode(GOOD_TEST);
-      expect(result.feedback).toBe("");
+      expect(result.feedback).toBe('');
     });
 
-    it("combines multiple issue feedbacks with newlines", () => {
-      const result = classifyTestCode(SHALLOW_ASSERTIONS + "\n" + FLAKY_TIMEOUT.replace(/import.*\n/, ""));
+    it('combines multiple issue feedbacks with newlines', () => {
+      const result = classifyTestCode(
+        SHALLOW_ASSERTIONS + '\n' + FLAKY_TIMEOUT.replace(/import.*\n/, ''),
+      );
       if (result.issues.length > 1) {
-        expect(result.feedback).toContain("\n");
+        expect(result.feedback).toContain('\n');
       }
     });
   });
 
-  describe("result shape", () => {
-    it("always has passed, issues, feedback fields", () => {
-      const result: PreCheckResult = classifyTestCode("");
-      expect(typeof result.passed).toBe("boolean");
+  describe('result shape', () => {
+    it('always has passed, issues, feedback fields', () => {
+      const result: PreCheckResult = classifyTestCode('');
+      expect(typeof result.passed).toBe('boolean');
       expect(Array.isArray(result.issues)).toBe(true);
-      expect(typeof result.feedback).toBe("string");
+      expect(typeof result.feedback).toBe('string');
     });
 
-    it("empty string input → no-tests and no-goto hard fail", () => {
-      const result = classifyTestCode("");
+    it('empty string input → no-tests and no-goto hard fail', () => {
+      const result = classifyTestCode('');
       expect(result.passed).toBe(false);
-      expect(result.issues).toContain("no-tests");
+      expect(result.issues).toContain('no-tests');
     });
   });
 });

@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Text, useInput, useApp } from 'ink';
 import SelectInput from 'ink-select-input';
-import { isOllamaRunning, listOllamaModels, listOpenAIModels, listAnthropicModels } from '@/providers/index';
+import {
+  isOllamaRunning,
+  listOllamaModels,
+  listOpenAIModels,
+  listAnthropicModels,
+} from '@/providers/index';
 import { writeProvider, writeModel } from '@/config/loader';
 import { detectPlaywrightBrowsers, ensurePlaywrightBrowsers } from '@/runner/index';
 import { detectPackageManager } from '@/utils/packageManager';
@@ -50,13 +55,17 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
         const pkg = JSON.parse(pkgContent);
         const hasNext = !!(pkg.dependencies?.next || pkg.devDependencies?.next);
         if (!hasNext) {
-          setErrorMsg('qagent currently works with Next.js projects only. Please ensure Next.js is installed.');
+          setErrorMsg(
+            'qagent currently works with Next.js projects only. Please ensure Next.js is installed.',
+          );
           setStep('error');
         } else {
           setStep('dependencies-check');
         }
       } catch {
-        setErrorMsg('Could not read package.json. Ensure you are in a valid Node.js project directory.');
+        setErrorMsg(
+          'Could not read package.json. Ensure you are in a valid Node.js project directory.',
+        );
         setStep('error');
       }
     })();
@@ -71,7 +80,9 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
         const { readFile } = await import('node:fs/promises');
         const pkgContent = await readFile(pkgPath, 'utf8');
         const pkg = JSON.parse(pkgContent);
-        const hasPlaywright = !!(pkg.dependencies?.['@playwright/test'] || pkg.devDependencies?.['@playwright/test']);
+        const hasPlaywright = !!(
+          pkg.dependencies?.['@playwright/test'] || pkg.devDependencies?.['@playwright/test']
+        );
         if (!hasPlaywright) {
           setNeedsPlaywrightInstall(true);
           return;
@@ -108,13 +119,15 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
           return;
         }
         const codeFirst = installed.filter((m) =>
-          /coder|code|deepseek|qwen|mistral|llama/i.test(m)
+          /coder|code|deepseek|qwen|mistral|llama/i.test(m),
         );
         setModels([...new Set([...codeFirst, ...installed])]);
       } else if (provider === 'openai') {
         const fetched = await listOpenAIModels();
         if (fetched.length === 0) {
-          setErrorMsg('Could not fetch OpenAI models. Check your OPENAI_API_KEY is set in .env or shell.');
+          setErrorMsg(
+            'Could not fetch OpenAI models. Check your OPENAI_API_KEY is set in .env or shell.',
+          );
           setStep('error');
           return;
         }
@@ -122,7 +135,9 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
       } else if (provider === 'anthropic') {
         const fetched = await listAnthropicModels();
         if (fetched.length === 0) {
-          setErrorMsg('Could not fetch Anthropic models. Check your ANTHROPIC_API_KEY is set in .env or shell.');
+          setErrorMsg(
+            'Could not fetch Anthropic models. Check your ANTHROPIC_API_KEY is set in .env or shell.',
+          );
           setStep('error');
           return;
         }
@@ -179,7 +194,9 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
         setNeedsPlaywrightInstall(false);
         setStep('dependencies-check'); // Re-check dependencies
       } catch (err) {
-        setErrorMsg(`Playwright install failed: ${err instanceof Error ? err.message : String(err)}`);
+        setErrorMsg(
+          `Playwright install failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
         setStep('error');
       }
     })();
@@ -219,21 +236,25 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
 
   return (
     <Box flexDirection="column" padding={1}>
-
       {step === 'welcome' && (
         <Box flexDirection="column">
-          <Text color="cyan">{"  ██████╗  █████╗  ██████╗ ███████╗███╗   ██╗████████╗"}</Text>
-          <Text color="cyan">{"  ██╔═══██╗██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝"}</Text>
-          <Text color="cyan">{"  ██║   ██║███████║██║  ███╗█████╗  ██╔██╗ ██║   ██║   "}</Text>
-          <Text color="cyan">{"  ██║▄▄ ██║██╔══██║██║   ██║██╔══╝  ██║╚██╗██║   ██║   "}</Text>
-          <Text color="cyan">{"  ╚██████╔╝██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║   "}</Text>
-          <Text color="cyan">{"   ╚══▀▀═╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝  "}</Text>
-          <Text color="cyan">{"  ◉ change-aware behavioral regression testing           "}</Text>
+          <Text color="cyan">{'  ██████╗  █████╗  ██████╗ ███████╗███╗   ██╗████████╗'}</Text>
+          <Text color="cyan">{'  ██╔═══██╗██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝'}</Text>
+          <Text color="cyan">{'  ██║   ██║███████║██║  ███╗█████╗  ██╔██╗ ██║   ██║   '}</Text>
+          <Text color="cyan">{'  ██║▄▄ ██║██╔══██║██║   ██║██╔══╝  ██║╚██╗██║   ██║   '}</Text>
+          <Text color="cyan">{'  ╚██████╔╝██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║   '}</Text>
+          <Text color="cyan">{'   ╚══▀▀═╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝  '}</Text>
+          <Text color="cyan">{'  ◉ change-aware behavioral regression testing           '}</Text>
           <Text dimColor>{`   Real tests. Real browser. Zero maintenance.    v${version}  `}</Text>
           <Text> </Text>
           <Text bold>Welcome to qagent setup!</Text>
-          <Text>QA runs automatically on every <Text color="cyan">git add</Text> via <Text color="cyan">qagent watch</Text>.</Text>
-          <Text>Or use <Text color="cyan">qagent run</Text> to test staged changes manually.</Text>
+          <Text>
+            QA runs automatically on every <Text color="cyan">git add</Text> via{' '}
+            <Text color="cyan">qagent watch</Text>.
+          </Text>
+          <Text>
+            Or use <Text color="cyan">qagent run</Text> to test staged changes manually.
+          </Text>
           <Text> </Text>
           <Text>Proceed with setup?</Text>
           <SelectInput
@@ -293,19 +314,21 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
 
       {step === 'dependencies-check' && needsPlaywrightInstall && (
         <Box flexDirection="column">
-          <Text color="yellow">⚠  @playwright/test not found — required for browser tests.</Text>
+          <Text color="yellow">⚠ @playwright/test not found — required for browser tests.</Text>
           <Text> </Text>
           <Text>Install it now?</Text>
           <SelectInput
             items={[
               { label: 'Yes, install @playwright/test', value: 'yes' },
-              { label: 'No, I\'ll do it manually later', value: 'no' },
+              { label: "No, I'll do it manually later", value: 'no' },
             ]}
             onSelect={(item) => {
               if (item.value === 'yes') {
                 setStep('playwright-installing');
               } else {
-                setErrorMsg('Aborted. Run `npm install --save-dev @playwright/test` then retry qagent init.');
+                setErrorMsg(
+                  'Aborted. Run `npm install --save-dev @playwright/test` then retry qagent init.',
+                );
                 setStep('error');
               }
             }}
@@ -315,19 +338,21 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
 
       {step === 'dependencies-check' && needsChromiumInstall && (
         <Box flexDirection="column">
-          <Text color="yellow">⚠  Playwright Chromium not found — required for browser tests.</Text>
+          <Text color="yellow">⚠ Playwright Chromium not found — required for browser tests.</Text>
           <Text> </Text>
           <Text>Install it now?</Text>
           <SelectInput
             items={[
               { label: 'Yes, install Chromium', value: 'yes' },
-              { label: 'No, I\'ll do it manually later', value: 'no' },
+              { label: "No, I'll do it manually later", value: 'no' },
             ]}
             onSelect={(item) => {
               if (item.value === 'yes') {
                 setStep('chromium-installing');
               } else {
-                setErrorMsg('Aborted. Run `npx playwright install chromium` then retry qagent init.');
+                setErrorMsg(
+                  'Aborted. Run `npx playwright install chromium` then retry qagent init.',
+                );
                 setStep('error');
               }
             }}
@@ -359,21 +384,44 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
         <Box flexDirection="column">
           <Text color="green">✓ qagent is ready!</Text>
           <Text> </Text>
-          <Text>Provider  : <Text color="cyan">{provider}</Text></Text>
-          <Text>Model     : <Text color="cyan">{model}</Text></Text>
-          <Text>Chromium  : <Text color="cyan">✓ ready</Text></Text>
+          <Text>
+            Provider : <Text color="cyan">{provider}</Text>
+          </Text>
+          <Text>
+            Model : <Text color="cyan">{model}</Text>
+          </Text>
+          <Text>
+            Chromium : <Text color="cyan">✓ ready</Text>
+          </Text>
           {skillCreated && (
             <>
-              <Text>Skill file : <Text color="cyan">✓ qagent-skill.md created</Text></Text>
+              <Text>
+                Skill file : <Text color="cyan">✓ qagent-skill.md created</Text>
+              </Text>
               <Text> </Text>
-              <Text color="yellow">📝 Fill in <Text color="cyan">qagent-skill.md</Text> to improve test generation accuracy.</Text>
-              <Text dimColor>   Open it in your IDE agent / AI Agent Harness (Cursor, Claude Code, Windsurf) and let it</Text>
-              <Text dimColor>   explore your codebase to fill in routes, auth, hooks, and domain patterns.</Text>
+              <Text color="yellow">
+                📝 Fill in <Text color="cyan">qagent-skill.md</Text> to improve test generation
+                accuracy.
+              </Text>
+              <Text dimColor>
+                {' '}
+                Open it in your IDE agent / AI Agent Harness (Cursor, Claude Code, Windsurf) and let
+                it
+              </Text>
+              <Text dimColor>
+                {' '}
+                explore your codebase to fill in routes, auth, hooks, and domain patterns.
+              </Text>
             </>
           )}
           <Text> </Text>
-          <Text dimColor>Run <Text color="cyan">qagent watch</Text> — QA triggers on every <Text color="cyan">git add</Text>.</Text>
-          <Text dimColor>Or <Text color="cyan">qagent run</Text> to test staged changes manually.</Text>
+          <Text dimColor>
+            Run <Text color="cyan">qagent watch</Text> — QA triggers on every{' '}
+            <Text color="cyan">git add</Text>.
+          </Text>
+          <Text dimColor>
+            Or <Text color="cyan">qagent run</Text> to test staged changes manually.
+          </Text>
           <Text> </Text>
           <Text dimColor>Press Enter to exit...</Text>
         </Box>
@@ -386,7 +434,6 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
           <Text dimColor>Press Enter to exit...</Text>
         </Box>
       )}
-
     </Box>
   );
 };

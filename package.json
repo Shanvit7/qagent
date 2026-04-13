@@ -24,8 +24,11 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "check": "tsc --noEmit && vitest run",
-    "lint": "eslint src --ext .ts,.tsx",
-    "prepublishOnly": "bun run build"
+    "lint": "eslint src",
+    "prepare": "husky",
+    "prepublishOnly": "bun run build",
+    "prettier": "prettier --check \"src/**/*.{ts,tsx}\"",
+    "prettier:fix": "prettier --write \"src/**/*.{ts,tsx}\""
   },
   "keywords": [
     "behavioral-testing",
@@ -73,6 +76,11 @@
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@types/react": "^18.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.58.2",
+    "@typescript-eslint/parser": "^8.58.2",
+    "eslint": "^10.2.0",
+    "husky": "^9.1.7",
+    "prettier": "^3.8.2",
     "react-devtools-core": "^7.0.1",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",

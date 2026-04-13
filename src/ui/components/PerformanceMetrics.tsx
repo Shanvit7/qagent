@@ -7,7 +7,7 @@ interface PerformanceMetricsProps {
     cls?: { value: number; rating: string };
     fid?: { value: number; rating: string };
     ttfb?: { value: number; rating: string };
-    [key: string]: any;
+    [key: string]: { value: number; rating: string } | undefined;
   };
   baseline?: {
     lcp?: { value: number; rating: string };
@@ -19,10 +19,14 @@ interface PerformanceMetricsProps {
 
 const getRatingColor = (rating: string) => {
   switch (rating) {
-    case 'good': return 'green';
-    case 'needs-improvement': return 'yellow';
-    case 'poor': return 'red';
-    default: return 'white';
+    case 'good':
+      return 'green';
+    case 'needs-improvement':
+      return 'yellow';
+    case 'poor':
+      return 'red';
+    default:
+      return 'white';
   }
 };
 
@@ -32,11 +36,13 @@ const formatMetric = (value: number, unit: string) => {
   return value.toString();
 };
 
-export const PerformanceMetrics: React.FC<PerformanceMetricsProps> = ({
-  metrics,
-  baseline
-}) => {
-  const renderMetric = (label: string, current: any, baselineValue?: any, unit = 'ms') => {
+export const PerformanceMetrics: React.FC<PerformanceMetricsProps> = ({ metrics, baseline }) => {
+  const renderMetric = (
+    label: string,
+    current: { value: number; rating: string } | undefined,
+    baselineValue?: { value: number; rating: string },
+    unit = 'ms',
+  ) => {
     const currentValue = current?.value || 0;
     const currentRating = current?.rating || 'unknown';
     const baselineVal = baselineValue?.value;
@@ -50,12 +56,13 @@ export const PerformanceMetrics: React.FC<PerformanceMetricsProps> = ({
 
     return (
       <Text key={label}>
-        {label}: <Text color={getRatingColor(currentRating)}>
-          {formatMetric(currentValue, unit)}
-        </Text>
+        {label}:{' '}
+        <Text color={getRatingColor(currentRating)}>{formatMetric(currentValue, unit)}</Text>
         {baselineVal && (
           <Text dimColor>
-            {' '}vs {formatMetric(baselineVal, unit)}{change}
+            {' '}
+            vs {formatMetric(baselineVal, unit)}
+            {change}
           </Text>
         )}
       </Text>

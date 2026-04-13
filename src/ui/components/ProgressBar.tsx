@@ -11,15 +11,13 @@ interface ProgressBarComponentProps {
 export const ProgressBarComponent: React.FC<ProgressBarComponentProps> = ({
   progress,
   label,
-  width = 40
+  width = 40,
 }) => {
   return (
     <Box flexDirection="column">
       {label && <Text>{label}</Text>}
       <ProgressBar percent={progress * 100} width={width} />
-      <Text dimColor>
-        {Math.round(progress * 100)}%
-      </Text>
+      <Text dimColor>{Math.round(progress * 100)}%</Text>
     </Box>
   );
 };

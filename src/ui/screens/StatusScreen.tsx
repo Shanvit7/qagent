@@ -26,7 +26,10 @@ const checkSkillFile = (cwd: string): CheckItem => {
   };
 };
 
-const checkModel = async (provider: ProviderName | undefined, model: string | undefined): Promise<CheckItem> => {
+const checkModel = async (
+  provider: ProviderName | undefined,
+  model: string | undefined,
+): Promise<CheckItem> => {
   if (!provider || !model) {
     return {
       label: 'No model configured',
@@ -74,17 +77,23 @@ const checkModel = async (provider: ProviderName | undefined, model: string | un
 const renderCheck = (item: CheckItem): React.ReactNode => {
   const getSymbol = (status: CheckStatus) => {
     switch (status) {
-      case 'pass': return '✓';
-      case 'warn': return '⚠';
-      case 'fail': return '✗';
+      case 'pass':
+        return '✓';
+      case 'warn':
+        return '⚠';
+      case 'fail':
+        return '✗';
     }
   };
 
   const getColor = (status: CheckStatus) => {
     switch (status) {
-      case 'pass': return 'green';
-      case 'warn': return 'yellow';
-      case 'fail': return 'red';
+      case 'pass':
+        return 'green';
+      case 'warn':
+        return 'yellow';
+      case 'fail':
+        return 'red';
     }
   };
 
@@ -94,9 +103,7 @@ const renderCheck = (item: CheckItem): React.ReactNode => {
         {getSymbol(item.status)} {item.label}
         {item.detail && <Text dimColor> — {item.detail}</Text>}
       </Text>
-      {item.fix && (
-        <Text color="cyan">  {item.fix}</Text>
-      )}
+      {item.fix && <Text color="cyan"> {item.fix}</Text>}
     </Box>
   );
 };
@@ -115,10 +122,7 @@ export const StatusScreen: React.FC<StatusScreenProps> = ({ onComplete }) => {
       const provider = readProvider();
       const model = readModel();
 
-      const checkItems: CheckItem[] = [
-        checkSkillFile(cwd),
-        await checkModel(provider, model),
-      ];
+      const checkItems: CheckItem[] = [checkSkillFile(cwd), await checkModel(provider, model)];
 
       setChecks(checkItems);
 
@@ -128,9 +132,13 @@ export const StatusScreen: React.FC<StatusScreenProps> = ({ onComplete }) => {
       if (failing.length === 0 && warnings.length === 0) {
         setSummary('Everything looks good — qagent is ready.');
       } else if (failing.length > 0) {
-        setSummary(`${failing.length} issue${failing.length > 1 ? 's' : ''} to fix before qagent can run.`);
+        setSummary(
+          `${failing.length} issue${failing.length > 1 ? 's' : ''} to fix before qagent can run.`,
+        );
       } else {
-        setSummary(`Almost ready — ${warnings.length} optional step${warnings.length > 1 ? 's' : ''} above.`);
+        setSummary(
+          `Almost ready — ${warnings.length} optional step${warnings.length > 1 ? 's' : ''} above.`,
+        );
       }
     };
 
@@ -154,16 +162,19 @@ export const StatusScreen: React.FC<StatusScreenProps> = ({ onComplete }) => {
 
       {provider && model && (
         <Text>
-          Model: <Text bold>{model}</Text> <Text dimColor>({provider}, {process.env['QAGENT_MODEL'] ? 'env var' : '~/.qagentrc'})</Text>
+          Model: <Text bold>{model}</Text>{' '}
+          <Text dimColor>
+            ({provider}, {process.env['QAGENT_MODEL'] ? 'env var' : '~/.qagentrc'})
+          </Text>
         </Text>
       )}
-      {!provider && !model && (
-        <Text color="yellow">No model configured — run `qagent models`</Text>
-      )}
+      {!provider && !model && <Text color="yellow">No model configured — run `qagent models`</Text>}
 
       <Text>
         Iterations: <Text bold>{iterations}</Text>
-        <Text dimColor>{iterations === DEFAULT_ITERATIONS ? ' (recommended)' : ''} qagent config iterations</Text>
+        <Text dimColor>
+          {iterations === DEFAULT_ITERATIONS ? ' (recommended)' : ''} qagent config iterations
+        </Text>
       </Text>
 
       <Text>{''}</Text>

@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-nocheck — fixture is parsed by ts-morph for AST region mapping, not compiled
 // Covers all styling patterns that can affect Playwright-observable behaviour:
 //   - Tailwind: hidden, invisible, opacity-0, overflow-hidden, pointer-events-none, translate-*, sr-only
@@ -8,7 +9,7 @@ interface PanelProps {
   visible: boolean;
 }
 
-export const Panel = ({ title, visible }: PanelProps) => {
+export const Panel = ({ title, visible: _visible }: PanelProps) => {
   return (
     <div>
       {/* Tailwind visibility cases */}
@@ -25,21 +26,21 @@ export const Panel = ({ title, visible }: PanelProps) => {
       <div className="absolute z-10">Positioned element</div>
 
       {/* Inline style visibility cases */}
-      <div style={{ display: "none" }}>Display none</div>
-      <div style={{ visibility: "hidden" }}>Visibility hidden</div>
+      <div style={{ display: 'none' }}>Display none</div>
+      <div style={{ visibility: 'hidden' }}>Visibility hidden</div>
       <div style={{ opacity: 0 }}>Opacity zero</div>
       <div style={{ width: 0, height: 0 }}>Zero size</div>
 
       {/* Inline style layout cases */}
-      <div style={{ overflow: "hidden" }}>Clipped content</div>
-      <div style={{ pointerEvents: "none" }}>Non-interactive</div>
-      <div style={{ transform: "translateX(-100%)" }}>Off-screen</div>
-      <div style={{ position: "absolute", zIndex: 9 }}>Positioned</div>
+      <div style={{ overflow: 'hidden' }}>Clipped content</div>
+      <div style={{ pointerEvents: 'none' }}>Non-interactive</div>
+      <div style={{ transform: 'translateX(-100%)' }}>Off-screen</div>
+      <div style={{ position: 'absolute', zIndex: 9 }}>Positioned</div>
 
       {/* Cosmetic-only — should still SKIP */}
       <h2
         className="text-blue-500 font-bold text-xl"
-        style={{ color: "red", fontWeight: "bold", borderRadius: "4px" }}
+        style={{ color: 'red', fontWeight: 'bold', borderRadius: '4px' }}
       >
         {title}
       </h2>

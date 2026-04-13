@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect } from 'react';
 
 export const useUserData = (userId: string) => {
   const [data, setData] = useState<string | null>(null);
@@ -15,7 +15,9 @@ export const useUserData = (userId: string) => {
           setLoading(false);
         }
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [userId]);
 
   return { data, loading };

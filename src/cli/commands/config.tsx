@@ -1,6 +1,6 @@
-import React from "react";
-import { render } from "ink";
-import { ConfigScreen } from "../../ui/screens/ConfigScreen";
+import React from 'react';
+import { render } from 'ink';
+import { ConfigScreen } from '../../ui/screens/ConfigScreen';
 
 interface ConfigOptions {
   subcommand: string | undefined;
@@ -8,7 +8,9 @@ interface ConfigOptions {
 }
 export const configCommand = async (options: ConfigOptions): Promise<void> => {
   if (!process.stdin.isTTY) {
-    process.stderr.write("qagent config requires an interactive terminal (TTY). Please run in a proper terminal.\n");
+    process.stderr.write(
+      'qagent config requires an interactive terminal (TTY). Please run in a proper terminal.\n',
+    );
     process.exit(1);
   }
 
@@ -20,7 +22,7 @@ export const configCommand = async (options: ConfigOptions): Promise<void> => {
         onComplete={() => {
           resolvePromise();
         }}
-      />
+      />,
     );
   });
 };

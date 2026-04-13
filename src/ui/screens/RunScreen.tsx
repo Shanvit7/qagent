@@ -14,14 +14,15 @@ import { buildFileContext } from '@/context/index';
 import { buildRouteMap, findRoutesForFile, type RouteMap } from '@/routes/index';
 import { startServer, type ServerHandle } from '@/server/index';
 import { probeRoute } from '@/probe/index';
-import {
-  renderFileReport,
-  writeRunReport,
-  type FileReport,
-} from '@/reporter/index';
+import { renderFileReport, writeRunReport, type FileReport } from '@/reporter/index';
 import { loadFailureContext, updateFailureContext, type FailureContext } from '@/feedback/index';
-import { getSessionUsage, resetSessionUsage, formatTokenDelta, formatTokenSummary, ProviderError, formatProviderError } from '@/providers/index';
-import { sanitizeTestCode } from '@/sanitizer/index';
+import {
+  getSessionUsage,
+  resetSessionUsage,
+  formatTokenSummary,
+  ProviderError,
+  formatProviderError,
+} from '@/providers/index';
 import { MIN_ITERATIONS, MAX_ITERATIONS } from '@/config/loader';
 
 const QAGENT_DIR = join(process.cwd(), '.qagent');
@@ -67,7 +68,10 @@ export const RunScreen: React.FC<RunScreenProps> = ({ options, onComplete }) => 
         if (!isNaN(n) && n >= MIN_ITERATIONS && n <= MAX_ITERATIONS) {
           config.evaluator.maxIterations = n;
         } else {
-          setDetails(prev => [...prev, `Warning: Invalid --iterations value "${options.iterations}" — using default.`]);
+          setDetails((prev) => [
+            ...prev,
+            `Warning: Invalid --iterations value "${options.iterations}" — using default.`,
+          ]);
         }
       }
 
@@ -86,9 +90,11 @@ export const RunScreen: React.FC<RunScreenProps> = ({ options, onComplete }) => 
       let stagedFiles;
       try {
         stagedFiles = await getStagedFiles();
-        setDetails(prev => [...prev, `Found ${stagedFiles.length} staged file(s)`]);
+        setDetails((prev) => [...prev, `Found ${stagedFiles.length} staged file(s)`]);
       } catch (err) {
-        setError(`Could not read staged files: ${err instanceof Error ? err.message : String(err)}`);
+        setError(
+          `Could not read staged files: ${err instanceof Error ? err.message : String(err)}`,
+        );
         onComplete();
         return;
       }
@@ -103,7 +109,7 @@ export const RunScreen: React.FC<RunScreenProps> = ({ options, onComplete }) => 
       const skippedCount = stagedFiles.length - toTest.length;
 
       if (skippedCount > 0) {
-        setDetails(prev => [...prev, `Skipped ${skippedCount} trivial file(s)`]);
+        setDetails((prev) => [...prev, `Skipped ${skippedCount} trivial file(s)`]);
       }
 
       if (toTest.length === 0) {
@@ -114,7 +120,7 @@ export const RunScreen: React.FC<RunScreenProps> = ({ options, onComplete }) => 
 
       setStatus('Building route map...');
       const routeMap = buildRouteMap(cwd);
-      setDetails(prev => [...prev, `Route map: ${routeMap.routeIndex.size} routes`]);
+      setDetails((prev) => [...prev, `Route map: ${routeMap.routeIndex.size} routes`]);
 
       setStatus('Starting dev server...');
       let server: ServerHandle;
@@ -124,7 +130,7 @@ export const RunScreen: React.FC<RunScreenProps> = ({ options, onComplete }) => 
           port: config.playwright.server.port,
           readyTimeout: config.playwright.server.readyTimeout,
         });
-        setDetails(prev => [...prev, `Dev server ready at ${server.url}`]);
+        setDetails((prev) => [...prev, `Dev server ready at ${server.url}`]);
       } catch (err) {
         setError(`Server failed: ${err instanceof Error ? err.message : String(err)}`);
         onComplete();
@@ -135,7 +141,19 @@ export const RunScreen: React.FC<RunScreenProps> = ({ options, onComplete }) => 
         setStatus(`Processing ${toTest.length} file(s)...`);
 
         const results = await Promise.all(
-          toTest.map((cf) => processFile(cf, config, scanContext, router, cwd, routeMap, server.url, failureCtx, (msg) => setDetails(prev => [...prev, msg]))),
+          toTest.map((cf) =>
+            processFile(
+              cf,
+              config,
+              scanContext,
+              router,
+              cwd,
+              routeMap,
+              server.url,
+              failureCtx,
+              (msg) => setDetails((prev) => [...prev, msg]),
+            ),
+          ),
         );
 
         const failureTexts = results
@@ -147,7 +165,11 @@ export const RunScreen: React.FC<RunScreenProps> = ({ options, onComplete }) => 
         if (failureTexts.length > 0) {
           writeFileSync(LAST_FAILURE_PATH, failureTexts.join('\n\n---\n\n'), 'utf8');
         } else {
-          try { writeFileSync(LAST_FAILURE_PATH, '', 'utf8'); } catch { /* ignore */ }
+          try {
+            writeFileSync(LAST_FAILURE_PATH, '', 'utf8');
+          } catch {
+            /* ignore */
+          }
         }
 
         const fileReports = results.map((r) => r.report).filter((r): r is FileReport => r !== null);
@@ -160,22 +182,27 @@ export const RunScreen: React.FC<RunScreenProps> = ({ options, onComplete }) => 
         const hasErrors = fileReports.some((r) => r.status === 'error');
 
         const tokenSummary = formatTokenSummary(usage);
-        setDetails(prev => [...prev, `Report → ${reportPath.replace(cwd + '/', '')}${tokenSummary ? '\n  ' + tokenSummary : ''}`]);
+        setDetails((prev) => [
+          ...prev,
+          `Report → ${reportPath.replace(cwd + '/', '')}${tokenSummary ? '\n  ' + tokenSummary : ''}`,
+        ]);
 
         if (!hasFailed && !hasErrors) {
           setStatus('QA passed.');
         } else if (hasErrors && !hasFailed) {
-          setStatus('Could not run tests for some files — check generated code or Playwright setup.');
-          setDetails(prev => [...prev, 'Run `qagent explain` for details.']);
+          setStatus(
+            'Could not run tests for some files — check generated code or Playwright setup.',
+          );
+          setDetails((prev) => [...prev, 'Run `qagent explain` for details.']);
         } else {
           setStatus('QA issues found.');
-          setDetails(prev => [...prev, 'Run `qagent explain` to understand the failures.']);
+          setDetails((prev) => [...prev, 'Run `qagent explain` to understand the failures.']);
         }
       } catch (err) {
         if (err instanceof ProviderError) {
           setError(formatProviderError(err));
           if (err.kind === 'quota') {
-            setDetails(prev => [...prev, 'Add credits to your provider account, then re-run.']);
+            setDetails((prev) => [...prev, 'Add credits to your provider account, then re-run.']);
           }
         } else {
           setError(`Error: ${err instanceof Error ? err.message : String(err)}`);
@@ -196,11 +223,11 @@ export const RunScreen: React.FC<RunScreenProps> = ({ options, onComplete }) => 
       <Text>{''}</Text>
       <Text>{status}</Text>
       {details.map((detail, i) => (
-        <Text key={i} dimColor>{detail}</Text>
+        <Text key={i} dimColor>
+          {detail}
+        </Text>
       ))}
-      {error && (
-        <Text color="red">{error}</Text>
-      )}
+      {error && <Text color="red">{error}</Text>}
     </Box>
   );
 };
@@ -242,11 +269,16 @@ const processFile = async (
   const runtimeProbe = await probeRoute(routes[0] ?? '/', serverUrl, cwd);
   if (runtimeProbe.success) {
     const elementCount = runtimeProbe.snapshots.reduce(
-      (n, s) => n + s.interactiveElements.length, 0,
+      (n, s) => n + s.interactiveElements.length,
+      0,
     );
-    logDetail(`Live snapshot: ${elementCount} interactive elements across ${runtimeProbe.snapshots.length} viewports`);
+    logDetail(
+      `Live snapshot: ${elementCount} interactive elements across ${runtimeProbe.snapshots.length} viewports`,
+    );
   } else {
-    logDetail(`Probe skipped (${runtimeProbe.error ?? 'unavailable'}) — falling back to source-only`);
+    logDetail(
+      `Probe skipped (${runtimeProbe.error ?? 'unavailable'}) — falling back to source-only`,
+    );
   }
 
   let testCode: string;
@@ -262,8 +294,14 @@ const processFile = async (
     };
 
     const generated = await generateTests(
-      analysis, config, routes, cwd,
-      scanContext, router, fileContext, genOptions,
+      analysis,
+      config,
+      routes,
+      cwd,
+      scanContext,
+      router,
+      fileContext,
+      genOptions,
     );
     testCode = generated.testCode;
   } catch (err) {
@@ -276,7 +314,12 @@ const processFile = async (
   const action = classification.action as 'FULL_QA' | 'LIGHTWEIGHT';
 
   const lastTestPath = join(cwd, '.qagent', 'last-test.ts');
-  try { mkdirSync(join(cwd, '.qagent'), { recursive: true }); writeFileSync(lastTestPath, testCode, 'utf8'); } catch { /* ignore */ }
+  try {
+    mkdirSync(join(cwd, '.qagent'), { recursive: true });
+    writeFileSync(lastTestPath, testCode, 'utf8');
+  } catch {
+    /* ignore */
+  }
 
   let report: FileReport;
   let failureText: string | null = null;
@@ -301,7 +344,10 @@ const processFile = async (
     renderFileReport(report);
 
     if (!result.passed) {
-      failureText = `File: ${file.path}\nFailed tests: ${result.testCases.filter((t) => t.status === 'fail').map((t) => t.name).join(', ')}`;
+      failureText = `File: ${file.path}\nFailed tests: ${result.testCases
+        .filter((t) => t.status === 'fail')
+        .map((t) => t.name)
+        .join(', ')}`;
     }
   }
 

@@ -22,7 +22,9 @@ export const ConfigScreen: React.FC<ConfigScreenProps> = ({ subcommand, value, o
   React.useEffect(() => {
     if (!subcommand) {
       // Show current config
-      setMessage(`iterations  ${String(readIterations())}  (min ${MIN_ITERATIONS} · max ${MAX_ITERATIONS})`);
+      setMessage(
+        `iterations  ${String(readIterations())}  (min ${MIN_ITERATIONS} · max ${MAX_ITERATIONS})`,
+      );
       setState('show');
     } else if (subcommand === 'iterations') {
       if (!value) {
@@ -39,10 +41,14 @@ export const ConfigScreen: React.FC<ConfigScreenProps> = ({ subcommand, value, o
           setMessage(`Minimum is ${MIN_ITERATIONS}. Fewer iterations produce unreliable results.`);
         } else if (n > MAX_ITERATIONS) {
           setState('error');
-          setMessage(`Maximum is ${MAX_ITERATIONS}. Beyond that, token cost outweighs quality gain.`);
+          setMessage(
+            `Maximum is ${MAX_ITERATIONS}. Beyond that, token cost outweighs quality gain.`,
+          );
         } else {
           writeIterations(n);
-          setMessage(`Iterations set to ${String(n)}${n === DEFAULT_ITERATIONS ? '  (recommended)' : ''}`);
+          setMessage(
+            `Iterations set to ${String(n)}${n === DEFAULT_ITERATIONS ? '  (recommended)' : ''}`,
+          );
           setState('show');
         }
       }
@@ -54,18 +60,18 @@ export const ConfigScreen: React.FC<ConfigScreenProps> = ({ subcommand, value, o
 
   const current = readIterations();
 
-  const options = Array.from(
-    { length: MAX_ITERATIONS - MIN_ITERATIONS + 1 },
-    (_, i) => {
-      const n = MIN_ITERATIONS + i;
-      const hint =
-        n === DEFAULT_ITERATIONS ? 'recommended' :
-        n <= 4                   ? 'fast' :
-        n <= 6                   ? 'thorough' :
-                                   'exhaustive — high token cost';
-      return { label: `${n} (${hint})`, value: n };
-    },
-  );
+  const options = Array.from({ length: MAX_ITERATIONS - MIN_ITERATIONS + 1 }, (_, i) => {
+    const n = MIN_ITERATIONS + i;
+    const hint =
+      n === DEFAULT_ITERATIONS
+        ? 'recommended'
+        : n <= 4
+          ? 'fast'
+          : n <= 6
+            ? 'thorough'
+            : 'exhaustive — high token cost';
+    return { label: `${n} (${hint})`, value: n };
+  });
 
   useInput((input, key) => {
     if (key.return && (state === 'show' || state === 'error')) {
@@ -87,7 +93,12 @@ export const ConfigScreen: React.FC<ConfigScreenProps> = ({ subcommand, value, o
 
       {state === 'set' && (
         <>
-          <Text>Current: <Text bold>{current}</Text> <Text dimColor>(min {MIN_ITERATIONS} · max {MAX_ITERATIONS} · recommended {DEFAULT_ITERATIONS})</Text></Text>
+          <Text>
+            Current: <Text bold>{current}</Text>{' '}
+            <Text dimColor>
+              (min {MIN_ITERATIONS} · max {MAX_ITERATIONS} · recommended {DEFAULT_ITERATIONS})
+            </Text>
+          </Text>
           <Text>{''}</Text>
           <Text>Max refinement iterations per file:</Text>
           <SelectInput
@@ -95,16 +106,16 @@ export const ConfigScreen: React.FC<ConfigScreenProps> = ({ subcommand, value, o
             initialIndex={current - MIN_ITERATIONS}
             onSelect={(item) => {
               writeIterations(item.value);
-              setMessage(`Iterations set to ${item.value}${item.value === DEFAULT_ITERATIONS ? ' (recommended)' : ''}`);
+              setMessage(
+                `Iterations set to ${item.value}${item.value === DEFAULT_ITERATIONS ? ' (recommended)' : ''}`,
+              );
               setState('show');
             }}
           />
         </>
       )}
 
-      {state === 'error' && (
-        <Text color="red">{message}</Text>
-      )}
+      {state === 'error' && <Text color="red">{message}</Text>}
 
       <Text>{''}</Text>
       <Text dimColor>Press Enter to continue...</Text>

@@ -1,60 +1,62 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
-import type { QAgentConfig } from "./types";
-import type { ProviderName } from "@/providers/index";
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import type { QAgentConfig } from './types';
+import type { ProviderName } from '@/providers/index';
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
-const SKILL_FILE    = "qagent-skill.md";
-const RC_FILE       = resolve(process.cwd(), ".qagentrc");
+const SKILL_FILE = 'qagent-skill.md';
+const RC_FILE = resolve(process.cwd(), '.qagentrc');
 
 // ─── ~/.qagentrc  (provider=<name> + model=<name>) ──────────────────────────
 
 const readRcValue = (key: string): string | undefined => {
   if (!existsSync(RC_FILE)) return undefined;
   try {
-    for (const line of readFileSync(RC_FILE, "utf8").split("\n")) {
-      const [k, ...rest] = line.trim().split("=");
-      if (k?.trim() === key && rest.length > 0) return rest.join("=").trim();
+    for (const line of readFileSync(RC_FILE, 'utf8').split('\n')) {
+      const [k, ...rest] = line.trim().split('=');
+      if (k?.trim() === key && rest.length > 0) return rest.join('=').trim();
     }
-  } catch { /* fall through */ }
+  } catch {
+    /* fall through */
+  }
   return undefined;
 };
 
 const writeRcValue = (key: string, value: string): void => {
-  let content = "";
+  let content = '';
   if (existsSync(RC_FILE)) {
-    const lines = readFileSync(RC_FILE, "utf8")
-      .split("\n")
+    const lines = readFileSync(RC_FILE, 'utf8')
+      .split('\n')
       .filter((l) => !l.trim().startsWith(`${key}=`));
-    content = lines.join("\n").trimEnd();
-    if (content) content += "\n";
+    content = lines.join('\n').trimEnd();
+    if (content) content += '\n';
   }
-  writeFileSync(RC_FILE, `${content}${key}=${value}\n`, "utf8");
+  writeFileSync(RC_FILE, `${content}${key}=${value}\n`, 'utf8');
 };
 
-const VALID_PROVIDERS = new Set<ProviderName>(["ollama", "openai", "anthropic"]);
+const VALID_PROVIDERS = new Set<ProviderName>(['ollama', 'openai', 'anthropic']);
 
 export const readProvider = (): ProviderName | undefined => {
-  const env = process.env["QAGENT_PROVIDER"];
+  const env = process.env['QAGENT_PROVIDER'];
   if (env && VALID_PROVIDERS.has(env as ProviderName)) return env as ProviderName;
-  const rc = readRcValue("provider");
+  const rc = readRcValue('provider');
   if (rc && VALID_PROVIDERS.has(rc as ProviderName)) return rc as ProviderName;
   return undefined;
 };
 
 export const readModel = (): string | undefined => {
-  const env = process.env["QAGENT_MODEL"];
+  const env = process.env['QAGENT_MODEL'];
   if (env) return env;
-  return readRcValue("model");
+  return readRcValue('model');
 };
 
 export const writeProvider = (provider: ProviderName): void => {
-  writeRcValue("provider", provider);
+  writeRcValue('provider', provider);
 };
 
 export const writeModel = (model: string): void => {
-  writeRcValue("model", model);
+  writeRcValue('model', model);
 };
 
 export const isConfigured = (): boolean =>
@@ -67,12 +69,12 @@ export const MAX_ITERATIONS = 8;
 export const DEFAULT_ITERATIONS = 3;
 
 export const readIterations = (): number => {
-  const env = process.env["QAGENT_ITERATIONS"];
+  const env = process.env['QAGENT_ITERATIONS'];
   if (env) {
     const n = parseInt(env, 10);
     if (!isNaN(n)) return Math.min(MAX_ITERATIONS, Math.max(MIN_ITERATIONS, n));
   }
-  const rc = readRcValue("iterations");
+  const rc = readRcValue('iterations');
   if (rc) {
     const n = parseInt(rc, 10);
     if (!isNaN(n)) return Math.min(MAX_ITERATIONS, Math.max(MIN_ITERATIONS, n));
@@ -81,19 +83,17 @@ export const readIterations = (): number => {
 };
 
 export const writeIterations = (n: number): void => {
-  writeRcValue("iterations", String(n));
+  writeRcValue('iterations', String(n));
 };
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export const loadConfig = (cwd: string = process.cwd()): QAgentConfig => {
   const provider = readProvider();
-  const model    = readModel();
+  const model = readModel();
 
   if (!provider || !model) {
-    throw new Error(
-      "No model configured. Run `qagent models` to select a provider and model."
-    );
+    throw new Error('No model configured. Run `qagent models` to select a provider and model.');
   }
 
   const skillPath = resolve(cwd, SKILL_FILE);
@@ -101,9 +101,11 @@ export const loadConfig = (cwd: string = process.cwd()): QAgentConfig => {
   let skillContext: string | undefined;
   if (existsSync(skillPath)) {
     try {
-      const body = readFileSync(skillPath, "utf8").trim();
+      const body = readFileSync(skillPath, 'utf8').trim();
       if (body) skillContext = body;
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   return {
@@ -117,7 +119,7 @@ export const loadConfig = (cwd: string = process.cwd()): QAgentConfig => {
       browser: {
         headless: true,
         viewport: { width: 1280, height: 720 },
-        screenshotDir: ".qagent/screenshots",
+        screenshotDir: '.qagent/screenshots',
       },
     },
     watch: {

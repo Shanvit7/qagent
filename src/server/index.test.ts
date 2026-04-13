@@ -1,12 +1,12 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, writeFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
-import { detectDevCommand, getAvailablePort, loadProjectEnv } from "./index";
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { detectDevCommand, getAvailablePort, loadProjectEnv } from './index';
 
-const TMP = join(process.cwd(), ".test-server-tmp");
+const TMP = join(process.cwd(), '.test-server-tmp');
 
-describe("dev server", () => {
+describe('dev server', () => {
   beforeEach(() => {
     mkdirSync(TMP, { recursive: true });
   });
@@ -15,113 +15,131 @@ describe("dev server", () => {
     rmSync(TMP, { recursive: true, force: true });
   });
 
-  describe("detectDevCommand", () => {
+  describe('detectDevCommand', () => {
     it("returns 'npm run dev' when dev script exists", () => {
-      writeFileSync(join(TMP, "package.json"), JSON.stringify({
-        scripts: { dev: "next dev" },
-      }));
-      expect(detectDevCommand(TMP)).toBe("npm run dev");
+      writeFileSync(
+        join(TMP, 'package.json'),
+        JSON.stringify({
+          scripts: { dev: 'next dev' },
+        }),
+      );
+      expect(detectDevCommand(TMP)).toBe('npm run dev');
     });
 
-    it("detects Next.js from dependencies", () => {
-      writeFileSync(join(TMP, "package.json"), JSON.stringify({
-        dependencies: { next: "14.0.0" },
-      }));
-      expect(detectDevCommand(TMP)).toBe("npx next dev");
+    it('detects Next.js from dependencies', () => {
+      writeFileSync(
+        join(TMP, 'package.json'),
+        JSON.stringify({
+          dependencies: { next: '14.0.0' },
+        }),
+      );
+      expect(detectDevCommand(TMP)).toBe('npx next dev');
     });
 
-    it("detects Vite from devDependencies", () => {
-      writeFileSync(join(TMP, "package.json"), JSON.stringify({
-        devDependencies: { vite: "5.0.0" },
-      }));
-      expect(detectDevCommand(TMP)).toBe("npx vite");
+    it('detects Vite from devDependencies', () => {
+      writeFileSync(
+        join(TMP, 'package.json'),
+        JSON.stringify({
+          devDependencies: { vite: '5.0.0' },
+        }),
+      );
+      expect(detectDevCommand(TMP)).toBe('npx vite');
     });
 
-    it("detects CRA", () => {
-      writeFileSync(join(TMP, "package.json"), JSON.stringify({
-        dependencies: { "react-scripts": "5.0.0" },
-      }));
-      expect(detectDevCommand(TMP)).toBe("npx react-scripts start");
+    it('detects CRA', () => {
+      writeFileSync(
+        join(TMP, 'package.json'),
+        JSON.stringify({
+          dependencies: { 'react-scripts': '5.0.0' },
+        }),
+      );
+      expect(detectDevCommand(TMP)).toBe('npx react-scripts start');
     });
 
-    it("returns null when no package.json", () => {
-      expect(detectDevCommand(TMP + "/nonexistent")).toBeNull();
+    it('returns null when no package.json', () => {
+      expect(detectDevCommand(TMP + '/nonexistent')).toBeNull();
     });
 
-    it("returns null when no recognizable framework", () => {
-      writeFileSync(join(TMP, "package.json"), JSON.stringify({
-        dependencies: { lodash: "4.0.0" },
-      }));
+    it('returns null when no recognizable framework', () => {
+      writeFileSync(
+        join(TMP, 'package.json'),
+        JSON.stringify({
+          dependencies: { lodash: '4.0.0' },
+        }),
+      );
       expect(detectDevCommand(TMP)).toBeNull();
     });
 
-    it("prefers dev script over framework detection", () => {
-      writeFileSync(join(TMP, "package.json"), JSON.stringify({
-        scripts: { dev: "turbo dev" },
-        dependencies: { next: "14.0.0" },
-      }));
-      expect(detectDevCommand(TMP)).toBe("npm run dev");
+    it('prefers dev script over framework detection', () => {
+      writeFileSync(
+        join(TMP, 'package.json'),
+        JSON.stringify({
+          scripts: { dev: 'turbo dev' },
+          dependencies: { next: '14.0.0' },
+        }),
+      );
+      expect(detectDevCommand(TMP)).toBe('npm run dev');
     });
   });
 
-  describe("getAvailablePort", () => {
-    it("returns a valid port number", async () => {
+  describe('getAvailablePort', () => {
+    it('returns a valid port number', async () => {
       const port = await getAvailablePort();
       expect(port).toBeGreaterThan(0);
       expect(port).toBeLessThan(65536);
     });
 
-    it("returns different ports on successive calls", async () => {
+    it('returns different ports on successive calls', async () => {
       const p1 = await getAvailablePort();
       const p2 = await getAvailablePort();
       // Not guaranteed but very likely
-      expect(typeof p1).toBe("number");
-      expect(typeof p2).toBe("number");
+      expect(typeof p1).toBe('number');
+      expect(typeof p2).toBe('number');
     });
   });
 
-  describe("loadProjectEnv", () => {
-    it("loads variables from .env file", () => {
+  describe('loadProjectEnv', () => {
+    it('loads variables from .env file', () => {
       const tmpDir = join(tmpdir(), `qagent-env-test-${Date.now()}`);
       mkdirSync(tmpDir, { recursive: true });
-      writeFileSync(join(tmpDir, ".env"), "DB_URL=postgres://localhost\nAPI_KEY=abc123\n");
+      writeFileSync(join(tmpDir, '.env'), 'DB_URL=postgres://localhost\nAPI_KEY=abc123\n');
       const vars = loadProjectEnv(tmpDir);
-      expect(vars.DB_URL).toBe("postgres://localhost");
-      expect(vars.API_KEY).toBe("abc123");
+      expect(vars.DB_URL).toBe('postgres://localhost');
+      expect(vars.API_KEY).toBe('abc123');
       rmSync(tmpDir, { recursive: true });
     });
 
-    it("strips surrounding quotes from values", () => {
+    it('strips surrounding quotes from values', () => {
       const tmpDir = join(tmpdir(), `qagent-env-test-${Date.now()}`);
       mkdirSync(tmpDir, { recursive: true });
-      writeFileSync(join(tmpDir, ".env"), `SECRET="my secret"\nOTHER='single'\n`);
+      writeFileSync(join(tmpDir, '.env'), `SECRET="my secret"\nOTHER='single'\n`);
       const vars = loadProjectEnv(tmpDir);
-      expect(vars.SECRET).toBe("my secret");
-      expect(vars.OTHER).toBe("single");
+      expect(vars.SECRET).toBe('my secret');
+      expect(vars.OTHER).toBe('single');
       rmSync(tmpDir, { recursive: true });
     });
 
-    it("later files override earlier ones", () => {
+    it('later files override earlier ones', () => {
       const tmpDir = join(tmpdir(), `qagent-env-test-${Date.now()}`);
       mkdirSync(tmpDir, { recursive: true });
-      writeFileSync(join(tmpDir, ".env"), "KEY=base\n");
-      writeFileSync(join(tmpDir, ".env.local"), "KEY=local\n");
+      writeFileSync(join(tmpDir, '.env'), 'KEY=base\n');
+      writeFileSync(join(tmpDir, '.env.local'), 'KEY=local\n');
       const vars = loadProjectEnv(tmpDir);
-      expect(vars.KEY).toBe("local");
+      expect(vars.KEY).toBe('local');
       rmSync(tmpDir, { recursive: true });
     });
 
-    it("skips comments and empty lines", () => {
+    it('skips comments and empty lines', () => {
       const tmpDir = join(tmpdir(), `qagent-env-test-${Date.now()}`);
       mkdirSync(tmpDir, { recursive: true });
-      writeFileSync(join(tmpDir, ".env"), "# comment\n\nVALID=yes\n");
+      writeFileSync(join(tmpDir, '.env'), '# comment\n\nVALID=yes\n');
       const vars = loadProjectEnv(tmpDir);
-      expect(vars.VALID).toBe("yes");
+      expect(vars.VALID).toBe('yes');
       expect(Object.keys(vars)).toHaveLength(1);
       rmSync(tmpDir, { recursive: true });
     });
 
-    it("returns empty object when no env files exist", () => {
+    it('returns empty object when no env files exist', () => {
       const tmpDir = join(tmpdir(), `qagent-env-test-${Date.now()}`);
       mkdirSync(tmpDir, { recursive: true });
       const vars = loadProjectEnv(tmpDir);

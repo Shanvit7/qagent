@@ -11,16 +11,16 @@
  * derivation and assertion strategy in the generated tests.
  */
 
-import { spawn } from "node:child_process";
-import { writeFileSync, unlinkSync, readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
-import { randomBytes } from "node:crypto";
-import { loadProjectEnv } from "@/server/index";
+import { spawn } from 'node:child_process';
+import { writeFileSync, unlinkSync, readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { randomBytes } from 'node:crypto';
+import { loadProjectEnv } from '@/server/index';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface ProbeViewport {
-  label: "desktop" | "mobile";
+  label: 'desktop' | 'mobile';
   width: number;
   height: number;
 }
@@ -49,7 +49,7 @@ export interface ProbeSnapshot {
    * Elements present in the DOM but not in the a11y tree — inert, aria-hidden,
    * or display:none. The generator should NOT use getByRole on these.
    */
-  hiddenElements: Array<{ selector: string; reason: "inert" | "aria-hidden" | "not-visible" }>;
+  hiddenElements: Array<{ selector: string; reason: 'inert' | 'aria-hidden' | 'not-visible' }>;
   /**
    * Observed state changes from clicking toggle-like buttons (buttons whose
    * accessible name or aria attributes change after click).
@@ -82,19 +82,15 @@ export interface RuntimeProbe {
 // ─── Viewports to probe ───────────────────────────────────────────────────────
 
 const PROBE_VIEWPORTS: ProbeViewport[] = [
-  { label: "desktop", width: 1280, height: 800 },
-  { label: "mobile",  width: 390,  height: 844 },
+  { label: 'desktop', width: 1280, height: 800 },
+  { label: 'mobile', width: 390, height: 844 },
 ];
 
 // ─── Probe script (runs inside a child node process) ─────────────────────────
 // Written to a temp file and executed via `node` in the target project's cwd
 // so it resolves @playwright/test from the correct node_modules.
 
-const buildProbeScript = (
-  url: string,
-  outputPath: string,
-  timeoutMs: number,
-): string => `
+const buildProbeScript = (url: string, outputPath: string, timeoutMs: number): string => `
 const { chromium } = require('@playwright/test');
 const fs = require('fs');
 
@@ -351,40 +347,40 @@ export const probeRoute = async (
   cwd: string,
   timeoutMs = 8_000,
 ): Promise<RuntimeProbe> => {
-  const url = `${serverUrl.replace(/\/$/, "")}${route}`;
-  const hash = randomBytes(4).toString("hex");
-  const scriptPath = join(cwd, ".qagent", "tmp", `probe-${hash}.cjs`);
-  const outputPath = join(cwd, ".qagent", "tmp", `probe-${hash}.json`);
+  const url = `${serverUrl.replace(/\/$/, '')}${route}`;
+  const hash = randomBytes(4).toString('hex');
+  const scriptPath = join(cwd, '.qagent', 'tmp', `probe-${hash}.cjs`);
+  const outputPath = join(cwd, '.qagent', 'tmp', `probe-${hash}.json`);
 
   // Ensure tmp dir exists
-  const { mkdirSync } = await import("node:fs");
-  mkdirSync(join(cwd, ".qagent", "tmp"), { recursive: true });
+  const { mkdirSync } = await import('node:fs');
+  mkdirSync(join(cwd, '.qagent', 'tmp'), { recursive: true });
 
-  writeFileSync(scriptPath, buildProbeScript(url, outputPath, timeoutMs), "utf8");
+  writeFileSync(scriptPath, buildProbeScript(url, outputPath, timeoutMs), 'utf8');
 
   try {
     await new Promise<void>((resolve, reject) => {
-      const child = spawn("node", [scriptPath], {
+      const child = spawn('node', [scriptPath], {
         cwd,
-        stdio: ["ignore", "ignore", "ignore"],
+        stdio: ['ignore', 'ignore', 'ignore'],
         timeout: timeoutMs * PROBE_VIEWPORTS.length + 5_000,
         // Inject target project's .env so the browser (and any node-level
         // Playwright config) sees the same environment as the dev server.
         env: { ...process.env, ...loadProjectEnv(cwd) },
       });
 
-      child.on("exit", (code) => {
+      child.on('exit', (code) => {
         if (code === 0 || existsSync(outputPath)) resolve();
         else reject(new Error(`Probe script exited with code ${code}`));
       });
-      child.on("error", reject);
+      child.on('error', reject);
     });
 
     if (!existsSync(outputPath)) {
-      return { route, url, snapshots: [], success: false, error: "Probe produced no output" };
+      return { route, url, snapshots: [], success: false, error: 'Probe produced no output' };
     }
 
-    const raw = JSON.parse(readFileSync(outputPath, "utf8")) as RuntimeProbe;
+    const raw = JSON.parse(readFileSync(outputPath, 'utf8')) as RuntimeProbe;
     raw.route = route;
     return raw;
   } catch (err) {
@@ -396,8 +392,16 @@ export const probeRoute = async (
       error: err instanceof Error ? err.message : String(err),
     };
   } finally {
-    try { unlinkSync(scriptPath); } catch { /* ignore */ }
-    try { unlinkSync(outputPath); } catch { /* ignore */ }
+    try {
+      unlinkSync(scriptPath);
+    } catch {
+      /* ignore */
+    }
+    try {
+      unlinkSync(outputPath);
+    } catch {
+      /* ignore */
+    }
   }
 };
 
@@ -411,7 +415,7 @@ export const probeRoute = async (
  * so it can write correct locators and skip elements that aren't there.
  */
 export const formatProbeForPrompt = (probe: RuntimeProbe): string => {
-  if (!probe.success || probe.snapshots.length === 0) return "";
+  if (!probe.success || probe.snapshots.length === 0) return '';
 
   const lines: string[] = [
     `## 🔍 Live page snapshot — ground truth for selectors and interactions`,
@@ -441,16 +445,20 @@ export const formatProbeForPrompt = (probe: RuntimeProbe): string => {
       for (const outcome of snap.interactionOutcomes) {
         const beforeStr = Object.entries(outcome.before)
           .map(([k, v]) => `${k}="${v}"`)
-          .join(", ");
+          .join(', ');
         const afterStr = Object.entries(outcome.after)
           .map(([k, v]) => `${k}="${v}"`)
-          .join(", ");
-        lines.push(`- Click \`getByRole("${outcome.trigger.role}", { name: "${outcome.trigger.name}" })\``);
-        lines.push(`  Before: ${beforeStr || "(no tracked attrs)"}`);
-        lines.push(`  After:  ${afterStr || "(no tracked attrs)"}`);
+          .join(', ');
+        lines.push(
+          `- Click \`getByRole("${outcome.trigger.role}", { name: "${outcome.trigger.name}" })\``,
+        );
+        lines.push(`  Before: ${beforeStr || '(no tracked attrs)'}`);
+        lines.push(`  After:  ${afterStr || '(no tracked attrs)'}`);
         if (outcome.nameAfter) {
           lines.push(`  ⚠️  Name changes to "${outcome.nameAfter}" — re-query after click:`);
-          lines.push(`  \`page.getByRole("${outcome.trigger.role}", { name: "${outcome.nameAfter}" })\``);
+          lines.push(
+            `  \`page.getByRole("${outcome.trigger.role}", { name: "${outcome.nameAfter}" })\``,
+          );
         }
       }
     }
@@ -465,7 +473,7 @@ export const formatProbeForPrompt = (probe: RuntimeProbe): string => {
 
     if (snap.consoleErrors.length > 0) {
       lines.push(``);
-      lines.push(`**Console errors on load:** ${snap.consoleErrors.slice(0, 3).join(" | ")}`);
+      lines.push(`**Console errors on load:** ${snap.consoleErrors.slice(0, 3).join(' | ')}`);
     }
 
     lines.push(``);
@@ -475,5 +483,5 @@ export const formatProbeForPrompt = (probe: RuntimeProbe): string => {
     `> Elements that appear only in one viewport snapshot require \`page.setViewportSize()\` BEFORE \`page.goto()\`.`,
   );
 
-  return lines.join("\n");
+  return lines.join('\n');
 };

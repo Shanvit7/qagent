@@ -24,7 +24,7 @@ interface SkillScreenProps {
 
 export const SkillScreen: React.FC<SkillScreenProps> = ({ onComplete }) => {
   const [step, setStep] = useState(0);
-  const [overwrite, setOverwrite] = useState<boolean | null>(null);
+  const [_overwrite, _setOverwrite] = useState<boolean | null>(null);
 
   const cwd = process.cwd();
   const skillPath = resolve(cwd, SKILL_FILE);
@@ -63,14 +63,12 @@ export const SkillScreen: React.FC<SkillScreenProps> = ({ onComplete }) => {
             <Text>{''}</Text>
             <Box borderStyle="round" padding={1}>
               <Text>
-                This must be done before generating any tests.
-                qagent has zero project-wide context on its own — this file is the only
-                way it knows your stores, auth, providers, mocks, and domain patterns.
-                Next step:
-                1. Open your agentic IDE (Cursor, Claude Code, Windsurf, etc.)
-                2. Paste the prompt below — it will explore your codebase
-                   and edit {SKILL_FILE} directly, filling in every section
-                3. Review the result, then run qagent run
+                This must be done before generating any tests. qagent has zero project-wide context
+                on its own — this file is the only way it knows your stores, auth, providers, mocks,
+                and domain patterns. Next step: 1. Open your agentic IDE (Cursor, Claude Code,
+                Windsurf, etc.) 2. Paste the prompt below — it will explore your codebase and edit{' '}
+                {SKILL_FILE} directly, filling in every section 3. Review the result, then run
+                qagent run
               </Text>
             </Box>
             <Text>{''}</Text>
@@ -79,7 +77,10 @@ export const SkillScreen: React.FC<SkillScreenProps> = ({ onComplete }) => {
             <Text>{IDE_PROMPT}</Text>
             <Text>{'─'.repeat(70)}</Text>
             <Text>{''}</Text>
-            <Text>Once your IDE agent / AI Agent Harness  fills in {SKILL_FILE}, you're ready to generate tests.</Text>
+            <Text>
+              Once your IDE agent / AI Agent Harness fills in {SKILL_FILE}, you're ready to generate
+              tests.
+            </Text>
           </Box>
         );
 

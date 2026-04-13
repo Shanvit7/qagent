@@ -9,9 +9,9 @@
  * real code and understands context without us labelling anything.
  */
 
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { resolve, dirname, join } from "node:path";
-import { Project, type SourceFile } from "ts-morph";
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { resolve, dirname, join } from 'node:path';
+import { Project, type SourceFile } from 'ts-morph';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -50,15 +50,19 @@ export interface FileContext {
 // ─── tsconfig paths resolution ────────────────────────────────────────────────
 
 const loadTsconfigPaths = (cwd: string): Record<string, string[]> => {
-  const candidates = ["tsconfig.json", "tsconfig.app.json", "tsconfig.base.json"];
+  const candidates = ['tsconfig.json', 'tsconfig.app.json', 'tsconfig.base.json'];
   for (const name of candidates) {
     const p = join(cwd, name);
     if (!existsSync(p)) continue;
     try {
-      const raw = readFileSync(p, "utf8").replace(/\/\/.*$/gm, "").replace(/,(\s*[}\]])/g, "$1");
+      const raw = readFileSync(p, 'utf8')
+        .replace(/\/\/.*$/gm, '')
+        .replace(/,(\s*[}\]])/g, '$1');
       const cfg = JSON.parse(raw) as { compilerOptions?: { paths?: Record<string, string[]> } };
       return cfg.compilerOptions?.paths ?? {};
-    } catch { /* malformed tsconfig — skip */ }
+    } catch {
+      /* malformed tsconfig — skip */
+    }
   }
   return {};
 };
@@ -71,7 +75,10 @@ let _sharedProject: Project | null = null;
 
 const getSharedProject = (): Project => {
   if (!_sharedProject) {
-    _sharedProject = new Project({ useInMemoryFileSystem: false, skipAddingFilesFromTsConfig: true });
+    _sharedProject = new Project({
+      useInMemoryFileSystem: false,
+      skipAddingFilesFromTsConfig: true,
+    });
   }
   return _sharedProject;
 };
@@ -82,29 +89,33 @@ const getOrAddSourceFile = (filePath: string): SourceFile => {
 };
 
 const isFile = (p: string): boolean => {
-  try { return statSync(p).isFile(); } catch { return false; }
+  try {
+    return statSync(p).isFile();
+  } catch {
+    return false;
+  }
 };
 
 const resolveAlias = (specifier: string, cwd: string): string | null => {
   if (!_tsconfigPaths) _tsconfigPaths = loadTsconfigPaths(cwd);
 
   for (const [alias, targets] of Object.entries(_tsconfigPaths)) {
-    const prefix = alias.replace(/\*$/, "");
+    const prefix = alias.replace(/\*$/, '');
     if (!specifier.startsWith(prefix)) continue;
     const suffix = specifier.slice(prefix.length);
     for (const target of targets) {
-      const base = target.replace(/\*$/, "");
+      const base = target.replace(/\*$/, '');
       const resolved = resolve(cwd, base + suffix);
-      for (const ext of ["", ".ts", ".tsx", ".js", "/index.ts", "/index.tsx"]) {
+      for (const ext of ['', '.ts', '.tsx', '.js', '/index.ts', '/index.tsx']) {
         if (existsSync(resolved + ext) && isFile(resolved + ext)) return resolved + ext;
       }
     }
   }
 
-  if (specifier.startsWith("@/")) {
+  if (specifier.startsWith('@/')) {
     const rel = specifier.slice(2);
-    for (const root of ["src", "app", "."]) {
-      for (const ext of ["", ".ts", ".tsx", ".js", "/index.ts", "/index.tsx"]) {
+    for (const root of ['src', 'app', '.']) {
+      for (const ext of ['', '.ts', '.tsx', '.js', '/index.ts', '/index.tsx']) {
         const candidate = join(cwd, root, rel + ext);
         if (existsSync(candidate) && isFile(candidate)) return candidate;
       }
@@ -116,45 +127,47 @@ const resolveAlias = (specifier: string, cwd: string): string | null => {
 
 const resolveRelative = (specifier: string, fromFile: string): string | null => {
   const base = resolve(dirname(fromFile), specifier);
-  for (const ext of ["", ".ts", ".tsx", ".js", "/index.ts", "/index.tsx"]) {
+  for (const ext of ['', '.ts', '.tsx', '.js', '/index.ts', '/index.tsx']) {
     if (existsSync(base + ext) && isFile(base + ext)) return base + ext;
   }
   return null;
 };
 
 const resolveSpecifier = (specifier: string, fromFile: string, cwd: string): string | null => {
-  if (specifier.startsWith(".")) return resolveRelative(specifier, fromFile);
-  if (specifier.startsWith("@/")) return resolveAlias(specifier, cwd);
+  if (specifier.startsWith('.')) return resolveRelative(specifier, fromFile);
+  if (specifier.startsWith('@/')) return resolveAlias(specifier, cwd);
   return null;
 };
 
 const isNodeModules = (specifier: string): boolean =>
-  !specifier.startsWith(".") && !specifier.startsWith("@/");
+  !specifier.startsWith('.') && !specifier.startsWith('@/');
 
 const extractPackageName = (specifier: string): string => {
-  if (specifier.startsWith("@")) return specifier.split("/").slice(0, 2).join("/");
-  return specifier.split("/")[0] ?? specifier;
+  if (specifier.startsWith('@')) return specifier.split('/').slice(0, 2).join('/');
+  return specifier.split('/')[0] ?? specifier;
 };
-
-
 
 // ─── Local module analysis ────────────────────────────────────────────────────
 
 const analyseLocalModule = (
   filePath: string,
-): Pick<ResolvedImport, "exportedNames" | "hasUseServer" | "sourceExcerpt"> => {
+): Pick<ResolvedImport, 'exportedNames' | 'hasUseServer' | 'sourceExcerpt'> => {
   if (!isFile(filePath)) return { exportedNames: [], hasUseServer: false, sourceExcerpt: null };
-  const source = readFileSync(filePath, "utf8");
+  const source = readFileSync(filePath, 'utf8');
   const sf = getOrAddSourceFile(filePath);
 
-  const exportedNames = sf.getExportSymbols().map((s) => s.getName()).filter(Boolean);
-  const hasUseServer  = /^['"]use server['"]/.test(source.trim()) || /^\s*['"]use server['"]/.test(source);
+  const exportedNames = sf
+    .getExportSymbols()
+    .map((s) => s.getName())
+    .filter(Boolean);
+  const hasUseServer =
+    /^['"]use server['"]/.test(source.trim()) || /^\s*['"]use server['"]/.test(source);
 
   const sourceExcerpt = source
-    .split("\n")
+    .split('\n')
     .slice(0, 40)
-    .join("\n")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .join('\n')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
     .trim();
 
   return { exportedNames, hasUseServer, sourceExcerpt };
@@ -163,17 +176,18 @@ const analyseLocalModule = (
 // ─── Import extraction ────────────────────────────────────────────────────────
 
 const extractImports = (filePath: string, cwd: string): ResolvedImport[] => {
-  const source = readFileSync(filePath, "utf8");
+  const source = readFileSync(filePath, 'utf8');
 
   // Capture full import statement: named bindings + specifier
   // Handles: import { a, b } from 'pkg', import X from 'pkg', import X, { a } from 'pkg', import * as X from 'pkg'
   const importRegex = /import\s+(?:type\s+)?(.+?)\s+from\s+['"]([^'"]+)['"]/g;
-  const parsed: Array<{ specifier: string; importedNames: string[]; hasDefaultImport: boolean }> = [];
+  const parsed: Array<{ specifier: string; importedNames: string[]; hasDefaultImport: boolean }> =
+    [];
   const seen = new Set<string>();
 
   for (const match of source.matchAll(importRegex)) {
-    const clause = match[1] ?? "";
-    const spec   = match[2] ?? "";
+    const clause = match[1] ?? '';
+    const spec = match[2] ?? '';
     if (!spec || seen.has(spec)) continue;
     seen.add(spec);
 
@@ -183,9 +197,9 @@ const extractImports = (filePath: string, cwd: string): ResolvedImport[] => {
     // Extract named imports from braces: { a, b as c, type d }
     const braceMatch = clause.match(/\{([^}]+)\}/);
     if (braceMatch) {
-      for (const part of braceMatch[1]!.split(",")) {
+      for (const part of braceMatch[1]!.split(',')) {
         const trimmed = part.trim();
-        if (!trimmed || trimmed.startsWith("type ")) continue;
+        if (!trimmed || trimmed.startsWith('type ')) continue;
         // "a as b" → use the original name "a" (what the module exports)
         const name = trimmed.split(/\s+as\s+/)[0]!.trim();
         if (name) importedNames.push(name);
@@ -193,13 +207,16 @@ const extractImports = (filePath: string, cwd: string): ResolvedImport[] => {
     }
 
     // Check for default import (identifier before the braces or standalone)
-    const beforeBrace = clause.replace(/\{[^}]*\}/, "").replace(/,/g, "").trim();
-    if (beforeBrace && !beforeBrace.startsWith("*")) {
+    const beforeBrace = clause
+      .replace(/\{[^}]*\}/, '')
+      .replace(/,/g, '')
+      .trim();
+    if (beforeBrace && !beforeBrace.startsWith('*')) {
       hasDefaultImport = true;
     }
 
     // Namespace import: import * as X from 'pkg'
-    if (clause.includes("*")) {
+    if (clause.includes('*')) {
       hasDefaultImport = false; // not really default, but namespace
     }
 
@@ -250,34 +267,40 @@ const extractImports = (filePath: string, cwd: string): ResolvedImport[] => {
 
 // ─── Narrative builder ────────────────────────────────────────────────────────
 
-const buildSummary = (ctx: Omit<FileContext, "summary">): string => {
-  const lines: string[] = ["## Dynamic codebase context (from import analysis)\n"];
+const buildSummary = (ctx: Omit<FileContext, 'summary'>): string => {
+  const lines: string[] = ['## Dynamic codebase context (from import analysis)\n'];
 
   // All external packages this file actually imports — AI knows what they are
   const externalPkgs = ctx.imports.filter((i) => !i.isLocal && i.packageName);
   if (externalPkgs.length > 0) {
-    lines.push(`**External packages:** ${externalPkgs.map((i) => i.packageName).join(", ")}`);
+    lines.push(`**External packages:** ${externalPkgs.map((i) => i.packageName).join(', ')}`);
   }
 
   // Server action dependencies
   const serverActionImports = ctx.imports.filter((i) => i.hasUseServer);
   if (serverActionImports.length > 0) {
-    lines.push(`**Server action dependency:** ${serverActionImports.map((i) => i.specifier).join(", ")} — test via form submission or page interaction`);
+    lines.push(
+      `**Server action dependency:** ${serverActionImports.map((i) => i.specifier).join(', ')} — test via form submission or page interaction`,
+    );
   }
 
   // Transitive packages from local deps
   if (ctx.transitivePackages.length > 0) {
-    lines.push(`**Transitively depends on:** ${[...new Set(ctx.transitivePackages)].slice(0, 8).join(", ")}`);
+    lines.push(
+      `**Transitively depends on:** ${[...new Set(ctx.transitivePackages)].slice(0, 8).join(', ')}`,
+    );
   }
 
   // Source excerpts for every resolved local import — no pre-classification,
   // the AI reads the actual code and understands what each module does
   const localWithSource = ctx.imports.filter((i) => i.isLocal && i.sourceExcerpt);
   for (const imp of localWithSource) {
-    lines.push(`\n**Local import \`${imp.specifier}\`** (exports: ${imp.exportedNames.slice(0, 6).join(", ") || "none detected"}):\n\`\`\`ts\n${imp.sourceExcerpt}\n\`\`\``);
+    lines.push(
+      `\n**Local import \`${imp.specifier}\`** (exports: ${imp.exportedNames.slice(0, 6).join(', ') || 'none detected'}):\n\`\`\`ts\n${imp.sourceExcerpt}\n\`\`\``,
+    );
   }
 
-  return lines.join("\n");
+  return lines.join('\n');
 };
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -291,12 +314,14 @@ export const buildFileContext = (filePath: string, cwd: string): FileContext => 
     try {
       const level2 = extractImports(imp.resolvedPath!, cwd);
       transitivePackages.push(
-        ...level2.filter((i) => !i.isLocal && i.packageName).map((i) => i.packageName!)
+        ...level2.filter((i) => !i.isLocal && i.packageName).map((i) => i.packageName!),
       );
-    } catch { /* unresolvable — skip */ }
+    } catch {
+      /* unresolvable — skip */
+    }
   }
 
-  const partial: Omit<FileContext, "summary"> = {
+  const partial: Omit<FileContext, 'summary'> = {
     filePath,
     imports,
     transitivePackages,

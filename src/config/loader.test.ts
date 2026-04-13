@@ -1,32 +1,32 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { loadConfig } from "./loader";
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { loadConfig } from './loader';
 
-describe("loadConfig", () => {
+describe('loadConfig', () => {
   const origEnv = { ...process.env };
 
   beforeEach(() => {
-    process.env["QAGENT_PROVIDER"] = "ollama";
-    process.env["QAGENT_MODEL"] = "qwen2.5-coder:7b";
+    process.env['QAGENT_PROVIDER'] = 'ollama';
+    process.env['QAGENT_MODEL'] = 'qwen2.5-coder:7b';
   });
 
   afterEach(() => {
     process.env = { ...origEnv };
   });
 
-  it("returns defaults when no skill file exists", () => {
-    const config = loadConfig("/tmp/nonexistent-qagent-project-xyz");
-    expect(config.ai.provider).toBe("ollama");
-    expect(config.ai.model).toBe("qwen2.5-coder:7b");
+  it('returns defaults when no skill file exists', () => {
+    const config = loadConfig('/tmp/nonexistent-qagent-project-xyz');
+    expect(config.ai.provider).toBe('ollama');
+    expect(config.ai.model).toBe('qwen2.5-coder:7b');
     expect(config.classifier.skipTrivial).toBe(true);
     expect(config.playwright.timeout).toBe(30_000);
   });
 
-  it("throws when no provider/model configured", async () => {
-    delete process.env["QAGENT_PROVIDER"];
-    delete process.env["QAGENT_MODEL"];
+  it('throws when no provider/model configured', async () => {
+    delete process.env['QAGENT_PROVIDER'];
+    delete process.env['QAGENT_MODEL'];
 
     // Mock the rc file reader to return undefined (no ~/.qagentrc)
-    const loader = await import("./loader.js");
+    const loader = await import('./loader.js');
     const origReadProvider = loader.readProvider;
     const origReadModel = loader.readModel;
 
@@ -40,6 +40,6 @@ describe("loadConfig", () => {
       return;
     }
 
-    expect(() => loadConfig("/tmp/nonexistent-qagent-project-xyz")).toThrow("No model configured");
+    expect(() => loadConfig('/tmp/nonexistent-qagent-project-xyz')).toThrow('No model configured');
   });
 });
