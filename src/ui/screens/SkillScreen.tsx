@@ -79,7 +79,7 @@ export const SkillScreen: React.FC<SkillScreenProps> = ({ onComplete }) => {
             <Text>{IDE_PROMPT}</Text>
             <Text>{'─'.repeat(70)}</Text>
             <Text>{''}</Text>
-            <Text>Once your IDE agent fills in {SKILL_FILE}, you're ready to generate tests.</Text>
+            <Text>Once your IDE agent / AI Agent Harness  fills in {SKILL_FILE}, you're ready to generate tests.</Text>
           </Box>
         );
 

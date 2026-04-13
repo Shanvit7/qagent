@@ -6,6 +6,8 @@ import { writeProvider, writeModel } from '@/config/loader';
 import { detectPlaywrightBrowsers, ensurePlaywrightBrowsers } from '@/runner/index';
 import { detectPackageManager } from '@/utils/packageManager';
 import { resolve } from 'node:path';
+import { writeFileSync, existsSync } from 'node:fs';
+import { SKILL_TEMPLATE } from '@/skill/template';
 
 interface InitWizardProps {
   onComplete: () => void;
@@ -21,6 +23,7 @@ type Step =
   | 'provider'
   | 'loading-models'
   | 'model'
+  | 'skill-creating'
   | 'done'
   | 'error';
 
@@ -33,6 +36,7 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
   const [needsChromiumInstall, setNeedsChromiumInstall] = useState(false);
   const [needsPlaywrightInstall, setNeedsPlaywrightInstall] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [skillCreated, setSkillCreated] = useState(false);
   const [cwd] = useState(() => process.cwd());
 
   // Check if project is Next.js
@@ -188,6 +192,24 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
     writeModel(model);
   }, [step]);
 
+  // Auto-create skill file after model is selected
+  useEffect(() => {
+    if (step !== 'skill-creating') return;
+    const skillPath = resolve(cwd, 'qagent-skill.md');
+    const alreadyExists = existsSync(skillPath);
+    if (!alreadyExists) {
+      try {
+        writeFileSync(skillPath, SKILL_TEMPLATE, 'utf8');
+        setSkillCreated(true);
+      } catch {
+        // Non-fatal — skill file creation failure shouldn't block setup
+      }
+    }
+    writeProvider(provider as 'ollama' | 'openai' | 'anthropic');
+    writeModel(model);
+    setStep('done');
+  }, [step]);
+
   useInput((_input, key) => {
     if (key.return && (step === 'done' || step === 'error')) {
       onComplete();
@@ -263,7 +285,7 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
             items={models.map((m) => ({ label: m, value: m }))}
             onSelect={(item) => {
               setModel(item.value);
-              setStep('done');
+              setStep('skill-creating');
             }}
           />
         </Box>
@@ -327,6 +349,12 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
         </Box>
       )}
 
+      {step === 'skill-creating' && (
+        <Box flexDirection="column">
+          <Text color="cyan">Creating skill file...</Text>
+        </Box>
+      )}
+
       {step === 'done' && (
         <Box flexDirection="column">
           <Text color="green">✓ qagent is ready!</Text>
@@ -334,6 +362,15 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
           <Text>Provider  : <Text color="cyan">{provider}</Text></Text>
           <Text>Model     : <Text color="cyan">{model}</Text></Text>
           <Text>Chromium  : <Text color="cyan">✓ ready</Text></Text>
+          {skillCreated && (
+            <>
+              <Text>Skill file : <Text color="cyan">✓ qagent-skill.md created</Text></Text>
+              <Text> </Text>
+              <Text color="yellow">📝 Fill in <Text color="cyan">qagent-skill.md</Text> to improve test generation accuracy.</Text>
+              <Text dimColor>   Open it in your IDE agent / AI Agent Harness (Cursor, Claude Code, Windsurf) and let it</Text>
+              <Text dimColor>   explore your codebase to fill in routes, auth, hooks, and domain patterns.</Text>
+            </>
+          )}
           <Text> </Text>
           <Text dimColor>Run <Text color="cyan">qagent watch</Text> — QA triggers on every <Text color="cyan">git add</Text>.</Text>
           <Text dimColor>Or <Text color="cyan">qagent run</Text> to test staged changes manually.</Text>

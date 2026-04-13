@@ -20,11 +20,13 @@ Stage a file. qagent runs a pipeline:
 
 **2. Route mapping** — Traces which Next.js pages actually render the changed component via a reverse import graph.
 
-**3. Browser probe** — Opens real Chromium at the target route. Captures the accessibility tree, interactive elements, and console errors at desktop and mobile viewports. Clicks toggle-like controls and records before/after state. This snapshot is the ground truth for generation.
+**3. Dev server startup** — Automatically starts your project's dev server (e.g., `npm run dev`) if not already running.
 
-**4. Test generation** — AI writes behavioral Playwright tests from the probe snapshot and source context. Tests are framed as user goals.
+**4. Browser probe** — Opens real Chromium at the target route. Captures the accessibility tree, interactive elements, and console errors at desktop and mobile viewports. Clicks toggle-like controls and records before/after state. This snapshot is the ground truth for generation.
 
-**5. Execution and refinement** — Tests run in Chromium. On failure, runtime errors and probe context are fed back to the AI for a targeted fix. Up to 4 refinement attempts, tracking the best result across iterations.
+**5. Test generation** — AI writes behavioral Playwright tests from the probe snapshot and source context. Tests are framed as user goals.
+
+**6. Execution and refinement** — Tests run in Chromium. On failure, runtime errors and probe context are fed back to the AI for a targeted fix. Up to 4 refinement attempts, tracking the best result across iterations.
 
 ---
 

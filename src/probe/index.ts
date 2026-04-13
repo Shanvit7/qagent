@@ -126,11 +126,23 @@ async function probeViewport(browser, baseUrl, vp) {
       );
     } catch (_) { /* proceed with partial hydration */ }
 
+    // Wait for body to exist
+    try {
+      await page.waitForSelector('body', { timeout: 5000 });
+    } catch (e) {
+      consoleErrors.push('Body not found: ' + e.message);
+    }
+
     // ── Accessibility tree ──────────────────────────────────────────────────
     let a11yTree = null;
     try {
       a11yTree = await page.accessibility.snapshot({ interestingOnly: false });
-    } catch (_) {}
+      if (!a11yTree) {
+        consoleErrors.push('Accessibility snapshot returned null');
+      }
+    } catch (e) {
+      consoleErrors.push('Accessibility snapshot error: ' + e.message);
+    }
 
     // ── Interactive elements reachable via a11y ─────────────────────────────
     const interactiveRoles = [
@@ -295,6 +307,15 @@ async function probeViewport(browser, baseUrl, vp) {
     result.success = result.snapshots.some(
       (s) => s.a11yTree !== null || s.interactiveElements.length > 0,
     );
+
+    if (!result.success) {
+      const allErrors = result.snapshots.flatMap(s => s.consoleErrors);
+      if (allErrors.length > 0) {
+        result.error = allErrors.slice(0, 3).join(' | ') + ' — the dev server was started by qagent, but the page did not load properly. Check for build errors or issues in your Next.js app.';
+      } else {
+        result.error = 'No accessibility tree or interactive elements captured — the dev server was started by qagent, but the page did not load properly. Check for build errors or issues in your Next.js app.';
+      }
+    }
   } catch (err) {
     result.error = err.message;
     result.success = false;
@@ -345,7 +366,7 @@ export const probeRoute = async (
     await new Promise<void>((resolve, reject) => {
       const child = spawn("node", [scriptPath], {
         cwd,
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: ["ignore", "ignore", "ignore"],
         timeout: timeoutMs * PROBE_VIEWPORTS.length + 5_000,
         // Inject target project's .env so the browser (and any node-level
         // Playwright config) sees the same environment as the dev server.

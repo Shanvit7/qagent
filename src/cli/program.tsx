@@ -36,38 +36,157 @@ program
   .command("run")
   .description("Run QA on staged files (starts dev server per-run)")
   .option("--iterations <n>", "Max refinement iterations for this run (min 3, max 8)")
-  .action(runCommand);
+  .action(async (options) => {
+    if (!existsSync(RC_FILE)) {
+      await new Promise<void>((resolve) => {
+        const { unmount } = render(
+          <InitWizard
+            version={PKG_VERSION}
+            onComplete={() => {
+              unmount();
+              resolve();
+            }}
+          />
+        );
+      });
+      process.exit(0);
+    } else {
+      await runCommand(options);
+    }
+  });
 
 program
   .command("watch")
   .description("Background CI — watch for staged changes and test in real browser")
-  .action(watchCommand);
+  .action(async () => {
+    if (!existsSync(RC_FILE)) {
+      await new Promise<void>((resolve) => {
+        const { unmount } = render(
+          <InitWizard
+            version={PKG_VERSION}
+            onComplete={() => {
+              unmount();
+              resolve();
+            }}
+          />
+        );
+      });
+      process.exit(0);
+    } else {
+      await watchCommand({});
+    }
+  });
 
 program
   .command("explain")
   .description("AI explains why the last test failed")
-  .action(explainCommand);
+  .action(async () => {
+    if (!existsSync(RC_FILE)) {
+      await new Promise<void>((resolve) => {
+        const { unmount } = render(
+          <InitWizard
+            version={PKG_VERSION}
+            onComplete={() => {
+              unmount();
+              resolve();
+            }}
+          />
+        );
+      });
+      process.exit(0);
+    } else {
+      await explainCommand();
+    }
+  });
 
 program
   .command("status")
   .description("Check Ollama connection and config summary")
-  .action(statusCommand);
+  .action(async () => {
+    if (!existsSync(RC_FILE)) {
+      await new Promise<void>((resolve) => {
+        const { unmount } = render(
+          <InitWizard
+            version={PKG_VERSION}
+            onComplete={() => {
+              unmount();
+              resolve();
+            }}
+          />
+        );
+      });
+      process.exit(0);
+    } else {
+      await statusCommand();
+    }
+  });
 
 program
   .command("models")
   .description("Switch the AI model used for test generation")
-  .action(modelsCommand);
+  .action(async () => {
+    if (!existsSync(RC_FILE)) {
+      await new Promise<void>((resolve) => {
+        const { unmount } = render(
+          <InitWizard
+            version={PKG_VERSION}
+            onComplete={() => {
+              unmount();
+              resolve();
+            }}
+          />
+        );
+      });
+      process.exit(0);
+    } else {
+      await modelsCommand();
+    }
+  });
 
 
 program
   .command("skill")
   .description("Create or reset qagent-skill.md with template and IDE prompt")
-  .action(skillCommand);
+  .action(async () => {
+    if (!existsSync(RC_FILE)) {
+      await new Promise<void>((resolve) => {
+        const { unmount } = render(
+          <InitWizard
+            version={PKG_VERSION}
+            onComplete={() => {
+              unmount();
+              resolve();
+            }}
+          />
+        );
+      });
+      process.exit(0);
+    } else {
+      await skillCommand();
+    }
+  });
 
 program
   .command("config [subcommand] [value]")
   .description("View or update qagent settings  (e.g. qagent config iterations 5)")
-  .action((subcommand?: string, value?: string) => configCommand({ subcommand, value }));
+  .action(async (subcommand?: string, value?: string) => {
+    if (!existsSync(RC_FILE)) {
+      await new Promise<void>((resolve) => {
+        const { unmount } = render(
+          <InitWizard
+            version={PKG_VERSION}
+            onComplete={() => {
+              unmount();
+              resolve();
+            }}
+          />
+        );
+      });
+      process.exit(0);
+    } else {
+      await configCommand({ subcommand, value });
+    }
+  });
 
 program.action(async () => {
   if (!process.stdin.isTTY) {
