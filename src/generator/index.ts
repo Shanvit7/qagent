@@ -3,19 +3,19 @@
  * for routes that render changed components.
  */
 
-import type { FileAnalysis, ComponentType } from "@/analyzer/index";
-import type { AiConfig, QAgentConfig } from "@/config/types";
+import type { FileAnalysis, ComponentType } from '@/analyzer/index';
+import type { AiConfig, QAgentConfig } from '@/config/types';
 
 // All lenses — always available internally, filtered by region at generation time
-type QaLens = "render" | "interaction" | "state" | "edge-cases" | "security";
-const ALL_LENSES: QaLens[] = ["render", "interaction", "state", "edge-cases", "security"];
-import type { RuntimeProbe } from "@/probe/index";
-import { formatProbeForPrompt } from "@/probe/index";
-import type { FileContext } from "@/context/index";
+type QaLens = 'render' | 'interaction' | 'state' | 'edge-cases' | 'security';
+const ALL_LENSES: QaLens[] = ['render', 'interaction', 'state', 'edge-cases', 'security'];
+import type { RuntimeProbe } from '@/probe/index';
+import { formatProbeForPrompt } from '@/probe/index';
+import type { FileContext } from '@/context/index';
 
-import { runSecurityAnalysis } from "@/agent/security";
-import { generate } from "@/providers/index";
-import { HARD_RULES } from "@/evaluator/index";
+import { runSecurityAnalysis } from '@/agent/security';
+import { generate } from '@/providers/index';
+import { HARD_RULES } from '@/evaluator/index';
 
 export interface GeneratedTests {
   filePath: string;
@@ -46,7 +46,7 @@ const LENS_DESCRIPTIONS: Record<QaLens, string> = {
   - If there's a loading state: navigate and assert the spinner appears then content loads
   - If there's an error state: assert a human-readable message, not a stack trace`,
 
-  "edge-cases": `**Edge cases** — the user flow works across contexts.
+  'edge-cases': `**Edge cases** — the user flow works across contexts.
   - Mobile viewport: set \`page.setViewportSize()\` matching the probe snapshot viewport where the element appears
   - Keyboard: Tab through interactive elements and assert focus is visible
   - Back navigation: navigate away and back, assert content is restored`,
@@ -61,7 +61,7 @@ const LENS_DESCRIPTIONS: Record<QaLens, string> = {
 // Each strategy maps the component type to the correct Playwright approach + concrete assertions.
 
 const STRATEGY_DEFAULT: Record<ComponentType, string> = {
-  "client-component": `**Strategy: Client component**
+  'client-component': `**Strategy: Client component**
 Navigate to the route. The component is hydrated — test initial render AND interactions.
 \`\`\`ts
 await page.goto("/route");
@@ -75,7 +75,7 @@ await page.getByRole("button", { name: /open|toggle|show/i }).click();
 await expect(page.getByRole("dialog")).toBeVisible(); // or whatever the source shows
 \`\`\``,
 
-  "server-component": `**Strategy: Server component**
+  'server-component': `**Strategy: Server component**
 Content is server-rendered — no hydration step needed. Test what the user sees on arrival.
 \`\`\`ts
 await page.goto("/route");
@@ -88,7 +88,7 @@ page.on("console", m => { if (m.type() === "error") errors.push(m.text()); });
 expect(errors.filter(e => e.includes("Hydration"))).toHaveLength(0);
 \`\`\``,
 
-  "api-route": `**Strategy: API route (fullstack)**
+  'api-route': `**Strategy: API route (fullstack)**
 The dev server is running with the project's real env vars. API routes work end-to-end.
 - Navigate to the page that consumes this API
 - Trigger the UI that calls the API (click buttons, submit forms, filter, etc.)
@@ -106,7 +106,7 @@ const [response] = await Promise.all([
 await expect(page.getByRole("row", { name: /invoice #/i })).toBeVisible();
 \`\`\``,
 
-  "server-action": `**Strategy: Server action (fullstack)**
+  'server-action': `**Strategy: Server action (fullstack)**
 The dev server runs with real env vars — server actions execute end-to-end.
 - Test the full form lifecycle: validation errors → valid submission → server response
 - Use \`waitForResponse()\` or \`waitForURL()\` to wait for the server action to complete
@@ -130,7 +130,7 @@ const [response] = await Promise.all([
 await expect(page.getByText(/thank you|success|submitted/i)).toBeVisible();
 \`\`\``,
 
-  "hook": `**Strategy: Custom hook**
+  hook: `**Strategy: Custom hook**
 Hooks have no UI — test through the page that uses them. Find the route that renders a component using this hook.
 \`\`\`ts
 await page.goto("/route-using-hook");
@@ -140,7 +140,7 @@ await page.waitForLoadState("domcontentloaded");
 // e.g. if the hook manages form state → fill inputs and assert the result
 \`\`\``,
 
-  "utility": `**Strategy: Utility function**
+  utility: `**Strategy: Utility function**
 Utilities affect output — test through the pages that use them.
 \`\`\`ts
 // Navigate to a page that renders output from this utility
@@ -150,7 +150,7 @@ await page.waitForLoadState("domcontentloaded");
 await expect(page.getByText(/\$1,234\.56/)).toBeVisible(); // if it's a formatter
 \`\`\``,
 
-  "unknown": `**Strategy: Unknown file type**
+  unknown: `**Strategy: Unknown file type**
 Navigate to the most relevant route and assert meaningful content.
 \`\`\`ts
 await page.goto("/");
@@ -168,11 +168,13 @@ const extractCodeBlock = (raw: string): string => {
   const untagged = raw.match(/```\n([\s\S]*?)```/);
   if (untagged) return untagged[1]?.trim() ?? raw.trim();
 
-  return raw
-    .split("\n")
-    .filter((line) => !line.trim().startsWith("```"))
-    .join("\n")
-    .trim() || raw.trim();
+  return (
+    raw
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('```'))
+      .join('\n')
+      .trim() || raw.trim()
+  );
 };
 
 // ─── Context block builders ───────────────────────────────────────────────────
@@ -182,22 +184,22 @@ const buildSecurityBlock = (
   lenses: readonly QaLens[],
   agentContext?: string | undefined,
 ): string => {
-  if (!lenses.includes("security")) return "";
+  if (!lenses.includes('security')) return '';
   if (agentContext) return agentContext;
-  if (analysis.securityFindings.length === 0) return "";
-  const items = analysis.securityFindings.map((f) => `- [${f.type}] ${f.detail}`).join("\n");
+  if (analysis.securityFindings.length === 0) return '';
+  const items = analysis.securityFindings.map((f) => `- [${f.type}] ${f.detail}`).join('\n');
   return `## Security findings — write browser tests for each\n${items}`;
 };
 
 const buildDiffBlock = (diff: string | undefined, fileStatus: string | undefined): string => {
-  if (!diff || fileStatus === "A") return "";
+  if (!diff || fileStatus === 'A') return '';
   return `## Git diff (what changed)
 \`\`\`diff
 ${diff.slice(0, 2_000)}
 \`\`\``;
 };
 
-import type { ChangeRegion } from "@/classifier/index";
+import type { ChangeRegion } from '@/classifier/index';
 
 // ─── Selector rules (shared between generate + refine prompts) ────────────────
 
@@ -241,34 +243,34 @@ Rules:
 
 // Maps classifier regions to plain-English test focus hints.
 const REGION_FOCUS: Partial<Record<ChangeRegion, string>> = {
-  "function-body":  "Focus on the component's primary behavior and user interactions",
-  "hook-deps":      "Focus on state transitions, async updates, and side-effect outcomes",
-  "server-action":  "Focus on form submission, success/error states, and redirects",
-  "jsx-markup":     "Focus on element presence, text content, and structure",
-  "jsx-styling":    "Focus on visibility — confirm elements still render and are reachable",
-  "jsx-cosmetic":   "One smoke test — confirm the page loads and key elements are visible",
-  "props":          "Focus on how the new/changed prop affects rendered output",
-  "types":          "One smoke test — type change shouldn't affect browser behavior",
-  "imports":        "One smoke test — verify the page still loads after the import change",
-  "exports":        "One smoke test — verify the component still renders correctly",
+  'function-body': "Focus on the component's primary behavior and user interactions",
+  'hook-deps': 'Focus on state transitions, async updates, and side-effect outcomes',
+  'server-action': 'Focus on form submission, success/error states, and redirects',
+  'jsx-markup': 'Focus on element presence, text content, and structure',
+  'jsx-styling': 'Focus on visibility — confirm elements still render and are reachable',
+  'jsx-cosmetic': 'One smoke test — confirm the page loads and key elements are visible',
+  props: 'Focus on how the new/changed prop affects rendered output',
+  types: "One smoke test — type change shouldn't affect browser behavior",
+  imports: 'One smoke test — verify the page still loads after the import change',
+  exports: 'One smoke test — verify the component still renders correctly',
 };
 
 // Which lenses are relevant for each changed region.
 // A className-only change doesn't need interaction/state/edge-cases tests.
 const REGION_LENS_MAP: Partial<Record<ChangeRegion, QaLens[]>> = {
-  "imports":            ["render"],
-  "exports":            ["render"],
-  "types":              ["render"],
-  "props":              ["render", "state"],
-  "jsx-styling":        ["render"],
-  "jsx-cosmetic":       ["render"],
-  "jsx-markup":         ["render", "interaction"],
-  "conditional-render": ["render", "state"],
-  "event-handler":      ["interaction", "edge-cases"],
-  "async-logic":        ["state", "edge-cases"],
-  "function-body":      ["render", "interaction", "state", "edge-cases"],
-  "hook-deps":          ["state", "interaction", "edge-cases"],
-  "server-action":      ["interaction", "state", "security"],
+  imports: ['render'],
+  exports: ['render'],
+  types: ['render'],
+  props: ['render', 'state'],
+  'jsx-styling': ['render'],
+  'jsx-cosmetic': ['render'],
+  'jsx-markup': ['render', 'interaction'],
+  'conditional-render': ['render', 'state'],
+  'event-handler': ['interaction', 'edge-cases'],
+  'async-logic': ['state', 'edge-cases'],
+  'function-body': ['render', 'interaction', 'state', 'edge-cases'],
+  'hook-deps': ['state', 'interaction', 'edge-cases'],
+  'server-action': ['interaction', 'state', 'security'],
 };
 
 const filterLensesToRegions = (lenses: QaLens[], regions: ChangeRegion[]): QaLens[] => {
@@ -285,13 +287,20 @@ const filterLensesToRegions = (lenses: QaLens[], regions: ChangeRegion[]): QaLen
 const buildRegionScopeHint = (regions: ChangeRegion[]): string => {
   // Pick the highest-signal region (first match in priority order)
   const priority: ChangeRegion[] = [
-    "server-action", "hook-deps", "function-body",
-    "jsx-markup", "props", "jsx-styling", "jsx-cosmetic",
-    "types", "exports", "imports",
+    'server-action',
+    'hook-deps',
+    'function-body',
+    'jsx-markup',
+    'props',
+    'jsx-styling',
+    'jsx-cosmetic',
+    'types',
+    'exports',
+    'imports',
   ];
   const dominant = priority.find((r) => regions.includes(r));
   const hint = dominant ? REGION_FOCUS[dominant] : null;
-  return hint ? `Focus hint: ${hint}.` : "";
+  return hint ? `Focus hint: ${hint}.` : '';
 };
 
 const buildChangeContextBlock = (
@@ -300,18 +309,18 @@ const buildChangeContextBlock = (
   fileStatus: string | undefined,
   changedRegions?: string[] | undefined,
 ): string => {
-  if (!action || !reason) return "";
+  if (!action || !reason) return '';
 
-  if (fileStatus === "A") {
+  if (fileStatus === 'A') {
     return `## Scope: NEW FILE
 Write comprehensive tests covering all visible behavior. Target 5-8 focused tests across the enabled lenses.`;
   }
 
   const regionLine = changedRegions?.length
-    ? `\nChanged regions: \`${changedRegions.join("`, `")}\``
-    : "";
+    ? `\nChanged regions: \`${changedRegions.join('`, `')}\``
+    : '';
 
-  if (action === "LIGHTWEIGHT") {
+  if (action === 'LIGHTWEIGHT') {
     return `## Scope: LIGHTWEIGHT — ${reason}${regionLine}
 Write 1-3 targeted tests. Focus only on what the classifier flagged:
 - One smoke test confirming the page still loads and the changed element is present
@@ -327,7 +336,7 @@ Write 1-3 targeted tests. Focus only on what the classifier flagged:
 
   return `## Scope: FULL QA — ${reason}${regionLine}
 Write 3-5 focused tests. **Test ONLY the changed behavior — not the whole component.**
-${regionScope ? regionScope + "\n" : ""}Cover each enabled lens that applies to the changed region. Skip lenses for code that did NOT change.`;
+${regionScope ? regionScope + '\n' : ''}Cover each enabled lens that applies to the changed region. Skip lenses for code that did NOT change.`;
 };
 
 // ─── Prompt builder ───────────────────────────────────────────────────────────
@@ -335,7 +344,7 @@ ${regionScope ? regionScope + "\n" : ""}Cover each enabled lens that applies to 
 interface PromptInput {
   analysis: FileAnalysis;
   routes: string[];
-  router: "app" | "pages" | "none";
+  router: 'app' | 'pages' | 'none';
   skillContext?: string | undefined;
   scanContext?: string | undefined;
   fileContext?: FileContext | undefined;
@@ -350,37 +359,33 @@ interface PromptInput {
 }
 
 const buildPrompt = (input: PromptInput): string => {
-  const { analysis, router } = input;
-  const isNewFile = input.fileStatus === "A";
-  const hasDiff   = !!input.diff?.trim() && !isNewFile;
+  const { analysis } = input;
+  const isNewFile = input.fileStatus === 'A';
+  const hasDiff = !!input.diff?.trim() && !isNewFile;
 
   // Server actions always get security lens
-  const activeLenses: QaLens[] = analysis.componentType === "server-action"
-    ? [...new Set([...ALL_LENSES, "security" as QaLens])]
-    : ALL_LENSES;
+  const activeLenses: QaLens[] =
+    analysis.componentType === 'server-action'
+      ? [...new Set([...ALL_LENSES, 'security' as QaLens])]
+      : ALL_LENSES;
 
   // For modified files filter to only lenses relevant to what changed.
   // New files and unknown regions get all lenses.
-  const relevantLenses = hasDiff && input.changedRegions?.length
-    ? filterLensesToRegions(activeLenses, input.changedRegions as ChangeRegion[])
-    : activeLenses;
+  const relevantLenses =
+    hasDiff && input.changedRegions?.length
+      ? filterLensesToRegions(activeLenses, input.changedRegions as ChangeRegion[])
+      : activeLenses;
 
-  const lensBlock = relevantLenses
-    .map((l) => `### ${l}\n${LENS_DESCRIPTIONS[l]}`)
-    .join("\n\n");
+  const lensBlock = relevantLenses.map((l) => `### ${l}\n${LENS_DESCRIPTIONS[l]}`).join('\n\n');
 
-  const routeStr = input.routes.length > 0
-    ? input.routes.map((r) => `\`${r}\``).join(", ")
-    : `\`/\` (inferred)`;
+  const routeStr =
+    input.routes.length > 0 ? input.routes.map((r) => `\`${r}\``).join(', ') : `\`/\` (inferred)`;
 
-  const propsBlock = analysis.props.length > 0
-    ? `**Props:** \`${analysis.props.join("`, `")}\``
-    : "";
+  const propsBlock =
+    analysis.props.length > 0 ? `**Props:** \`${analysis.props.join('`, `')}\`` : '';
 
   // ── Runtime probe — live page ground truth (takes priority over source analysis) ──
-  const probeBlock = input.runtimeProbe
-    ? formatProbeForPrompt(input.runtimeProbe)
-    : "";
+  const probeBlock = input.runtimeProbe ? formatProbeForPrompt(input.runtimeProbe) : '';
 
   // ── New file: cover the whole component ──────────────────────────────────
   if (isNewFile) {
@@ -392,18 +397,18 @@ const buildPrompt = (input: PromptInput): string => {
       propsBlock,
       ``,
       `## Source code — read carefully, derive every selector from this`,
-      "```tsx",
+      '```tsx',
       analysis.sourceText,
-      "```",
+      '```',
       ``,
       probeBlock,
       NETWORK_GUARD_BLOCK,
       `## ${STRATEGY_DEFAULT[analysis.componentType]}`,
       ``,
       buildSecurityBlock(analysis, activeLenses, input.agentSecurityContext),
-      input.fileContext?.summary ?? "",
-      input.scanContext ? `## Project context\n${input.scanContext}` : "",
-      input.skillContext ? `## Project skill file\n${input.skillContext}` : "",
+      input.fileContext?.summary ?? '',
+      input.scanContext ? `## Project context\n${input.scanContext}` : '',
+      input.skillContext ? `## Project skill file\n${input.skillContext}` : '',
       ``,
       `## Test goals — write 2-4 behavioral regression tests`,
       `Each test should answer: "can a user still complete this action after the change?"`,
@@ -413,7 +418,9 @@ const buildPrompt = (input: PromptInput): string => {
       SELECTOR_RULES,
       ``,
       HARD_RULES,
-    ].filter(Boolean).join("\n");
+    ]
+      .filter(Boolean)
+      .join('\n');
   }
 
   // ── Modified file: delta-first ────────────────────────────────────────────
@@ -427,13 +434,14 @@ const buildPrompt = (input: PromptInput): string => {
   );
 
   const lightweightIsInteractive = (input.changedRegions ?? []).some((r) =>
-    ["event-handler", "hook-deps", "server-action", "jsx-markup"].includes(r),
+    ['event-handler', 'hook-deps', 'server-action', 'jsx-markup'].includes(r),
   );
-  const testCountHint = input.classificationAction === "LIGHTWEIGHT"
-    ? lightweightIsInteractive
-      ? "Write **2 focused tests**: one smoke test (page loads, element visible) and one interaction test (the changed behavior still works). No more than 2."
-      : "Write **1 test** that directly verifies the changed behavior still works for a user. No more."
-    : `Write **2-3 behavioral regression tests**. Each answers: "can a user still do X after this change?" Test the flow, not the implementation.`;
+  const testCountHint =
+    input.classificationAction === 'LIGHTWEIGHT'
+      ? lightweightIsInteractive
+        ? 'Write **2 focused tests**: one smoke test (page loads, element visible) and one interaction test (the changed behavior still works). No more than 2.'
+        : 'Write **1 test** that directly verifies the changed behavior still works for a user. No more.'
+      : `Write **2-3 behavioral regression tests**. Each answers: "can a user still do X after this change?" Test the flow, not the implementation.`;
 
   return [
     `You are a senior QA engineer writing Playwright tests for a LIVE app running in Chromium.`,
@@ -451,26 +459,26 @@ const buildPrompt = (input: PromptInput): string => {
     propsBlock,
     ``,
     `## Source code — read carefully, derive every selector from this`,
-    "```tsx",
+    '```tsx',
     analysis.sourceText,
-    "```",
+    '```',
     ``,
     probeBlock,
     NETWORK_GUARD_BLOCK,
     `## ${STRATEGY_DEFAULT[analysis.componentType]}`,
     ``,
     buildSecurityBlock(analysis, activeLenses, input.agentSecurityContext),
-    input.fileContext?.summary ?? "",
-    input.scanContext ? `## Project context\n${input.scanContext}` : "",
-    input.skillContext ? `## Project skill file\n${input.skillContext}` : "",
-    relevantLenses.length > 0
-      ? `## Relevant lenses for this change\n${lensBlock}`
-      : "",
+    input.fileContext?.summary ?? '',
+    input.scanContext ? `## Project context\n${input.scanContext}` : '',
+    input.skillContext ? `## Project skill file\n${input.skillContext}` : '',
+    relevantLenses.length > 0 ? `## Relevant lenses for this change\n${lensBlock}` : '',
     ``,
     SELECTOR_RULES,
     ``,
     HARD_RULES,
-  ].filter(Boolean).join("\n");
+  ]
+    .filter(Boolean)
+    .join('\n');
 };
 
 // ─── AI call ──────────────────────────────────────────────────────────────────
@@ -507,15 +515,14 @@ export const generateTests = async (
   routes: string[],
   cwd: string,
   scanContext?: string | undefined,
-  router: "app" | "pages" | "none" = "none",
+  router: 'app' | 'pages' | 'none' = 'none',
   fileContext?: FileContext | undefined,
   options: GenerateTestsOptions = {},
 ): Promise<GeneratedTests> => {
   // Security agent runs when the component type warrants it — no user config needed
-  const needsSecurity = analysis.componentType === "server-action" || analysis.securityFindings.length > 0;
-  const securityResult = needsSecurity
-    ? await runSecurityAnalysis(analysis, config.ai, cwd)
-    : null;
+  const needsSecurity =
+    analysis.componentType === 'server-action' || analysis.securityFindings.length > 0;
+  const securityResult = needsSecurity ? await runSecurityAnalysis(analysis, config.ai, cwd) : null;
 
   const prompt = buildPrompt({
     analysis,

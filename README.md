@@ -1,207 +1,156 @@
 # qagent
 
-> **Change-aware E2E testing for Next.js**  
-> Automatically generates and runs Playwright tests based on your staged changes — in a real browser.
+Change-aware behavioral regression testing for Next.js. Generates and runs Playwright tests against your staged changes — in a real browser.
+
+> **⚠️ Early Alpha**: qagent is in active development and may have rough edges. If you encounter issues or have ideas, please [open an issue](https://github.com/Shanvit7/qagent/issues) or [contribute](https://github.com/Shanvit7/qagent/blob/main/docs/contributing.md)! Your feedback helps shape this package. 
 
 ---
 
-## Why qagent?
+## The problem
 
-Every time you change a component, you ask:
-
-> *"Did I break something a user would notice?"*
-
-qagent answers that automatically — before you commit.
-
-- 🧠 Understands your code changes (AST diff, not file diffs)
-- 🌐 Probes real browser behavior at desktop and mobile viewports
-- 🧪 Generates meaningful Playwright tests from what's actually accessible
-- ⚡ Runs them, refines failures, and reports results
-- 🔁 Background CI in watch mode — zero blocking, zero interruption
-
-Built for fast-moving teams without dedicated QA.
+Every time you change a component, you have to manually verify nothing broke for the user. qagent does that automatically, as part of your normal `git add` workflow.
 
 ---
 
 ## How it works
 
-When you stage a file (`git add`), qagent runs this pipeline:
+Stage a file. qagent runs a pipeline:
 
-### 1. Diff Classification
-- Skips irrelevant changes (CSS-only, import reorder)
-- Lightweight test for prop/type changes
-- Full QA for logic, state, hooks, and markup changes
-- Zero AI cost at this step
+**1. Classification** — Diffs the AST. Decides whether the change warrants full QA, a lightweight smoke test, or can be skipped entirely. No AI at this step.
 
-### 2. Route Mapping
-- Traces which Next.js pages render the changed component
-- Reverse import graph built once, O(1) lookup per file
-- Layout components resolve to `/` only
+**2. Route mapping** — Traces which Next.js pages actually render the changed component via a reverse import graph.
 
-### 3. Environment Load
-- Reads `.env`, `.env.local`, `.env.development`, `.env.development.local` from the target project
-- Injected into both the dev server process and the probe process
-- In watch mode: automatically restarts the dev server if any `.env*` file changes
+**3. Dev server startup** — Automatically starts your project's dev server (e.g., `npm run dev`) if not already running.
 
-### 4. Live Browser Probe
-- Opens real Chromium at the target route
-- Desktop (1280×800) and mobile (390×844) viewports
-- Captures: accessibility tree, interactive elements, hidden elements, console errors
-- Clicks toggle-like buttons and records before/after state (so generated tests never have stale locators)
-- Probe result is the ground truth fed into the generation prompt — no static JSX heuristics
+**4. Browser probe** — Opens real Chromium at the target route. Captures the accessibility tree, interactive elements, and console errors at desktop and mobile viewports. Clicks toggle-like controls and records before/after state. This snapshot is the ground truth for generation.
 
-### 5. Test Generation
-- AI writes behavioral Playwright tests from the probe snapshot + source context
-- Framed as user goals ("user can toggle mobile menu"), not component inspection
-- Sanitizer applies deterministic fixes to known AI-generated bad patterns before running
+**5. Test generation** — AI writes behavioral Playwright tests from the probe snapshot and source context. Tests are framed as user goals.
 
-### 6. Execution + Refinement Loop
-- Tests run in real Chromium via `npx playwright test --reporter json`
-- On failure: runtime errors + probe context fed back to AI for targeted fix
-- Tracks best score across iterations; up to 4 refinement attempts (configurable)
-- Parallel execution across multiple changed files
+**6. Execution and refinement** — Tests run in Chromium. On failure, runtime errors and probe context are fed back to the AI for a targeted fix. Up to 4 refinement attempts, tracking the best result across iterations.
 
 ---
 
-## Quick Start
+## Usage
 
 ```bash
-npx qagent@latest   # setup wizard — AI provider, Chromium check
-qagent watch        # run QA on every git add, in the background
-```
+# First run in a project — setup wizard (auto-detects if needed)
+qagent
 
-### Manual run
+# Watch mode — QA runs automatically on every git add
+qagent watch
 
-```bash
-git add src/MyComponent.tsx
+# One-shot — run against currently staged files
+git add src/components/Header.tsx
 qagent run
 ```
 
 ---
 
-## Example Output
+## Output
 
 ```
-$ qagent watch
+[10:14:32] header.tsx
 
-◆  qagent watch
-◇  ✓ qwen2.5-coder:7b (ollama) · Chromium ready
-◇  Route map: 21 routes
-◇  Dev server ready — http://localhost:3000
-◇  Watching for staged changes... (Ctrl+C to stop)
-
-  [10:14:32] header.tsx
-
-   FULL QA   header.tsx
-  ├─ ✓ user can toggle mobile menu
-  ├─ ✓ user can navigate via mobile menu
-  └─ ✓ desktop navigation renders correctly
+  FULL QA   header.tsx
+  ├─ ✓  user can toggle mobile menu          1.2s
+  ├─ ✓  user can navigate via mobile menu    0.9s
+  └─ ✓  desktop navigation renders           0.4s
 
   3/3 passed · 3.5s
 ```
 
 ---
 
-## Example Generated Test
+## Example generated test
 
 ```ts
 test("user can toggle the mobile menu", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
 
-  const openMenu = page.getByRole("button", { name: "Open menu" });
-  await openMenu.click();
+  const openBtn = page.getByRole("button", { name: "Open menu" });
+  await openBtn.click();
 
-  // Probe recorded that the button name changes to "Close menu" after click
-  const closeMenu = page.getByRole("button", { name: "Close menu" });
-  await expect(closeMenu).toBeVisible();
+  // Probe recorded button label changes to "Close menu" after click
+  await expect(page.getByRole("button", { name: "Close menu" })).toBeVisible();
 
-  await closeMenu.click();
-  await expect(openMenu).toBeVisible();
+  await page.getByRole("button", { name: "Close menu" }).click();
+  await expect(openBtn).toBeVisible();
 });
 ```
 
 ---
 
-## Smart Classification
+## Classification rules
 
-| Change Type                   | Decision    | Rationale                                   |
-|-------------------------------|-------------|---------------------------------------------|
-| CSS / Tailwind classes only   | **SKIP**    | Cosmetic — no behavioral impact              |
-| Import reorder                | **SKIP**    | No runtime effect                            |
-| Prop or type change           | **LIGHTWEIGHT** | Smoke test — verify component renders    |
-| JSX markup change             | **LIGHTWEIGHT** | Minor structural change                  |
-| Function body, hooks, state   | **FULL_QA** | Logic changed — full probe + generate needed |
-| Server action                 | **FULL_QA** + security scan | Form submission path changed  |
+| Change type                  | Decision      | Reason                                       |
+|------------------------------|---------------|----------------------------------------------|
+| CSS / Tailwind only          | skip          | No behavioral impact                         |
+| Import reorder               | skip          | No runtime effect                            |
+| Prop or type change          | lightweight   | Smoke test — verify it renders               |
+| JSX markup change            | lightweight   | Minor structural change                      |
+| Function body, hooks, state  | full QA       | Logic changed — probe and generate           |
+| Server action                | full QA       | Form submission path changed                 |
 
 ---
 
 ## Commands
 
-| Command                         | Description                                       |
-|---------------------------------|---------------------------------------------------|
-| `qagent watch`                  | Background CI — runs on every `git add`           |
-| `qagent run`                    | Run once on currently staged files, then exit     |
-| `qagent explain`                | AI explains the last test failure                 |
-| `qagent hook`                   | Enable/disable optional pre-commit blocking gate  |
-| `qagent config iterations <n>`  | Set max refinement loop iterations (1–8)          |
-| `qagent models`                 | Switch AI provider / model interactively          |
-| `qagent skill`                  | Generate project context file (`qagent-skill.md`) |
-| `qagent status`                 | Check setup — provider, Chromium, config          |
+| Command                        | Description                                          |
+|--------------------------------|------------------------------------------------------|
+| `qagent`                       | Run init if project not configured, else show help   |
+| `qagent init`                  | Setup wizard — provider, model, Chromium check       |
+| `qagent watch`                 | Run QA automatically on every `git add`              |
+| `qagent run`                   | One-shot QA on currently staged files                |
+| `qagent explain`               | AI explains the last test failure                    |
+| `qagent models`                | Switch AI provider or model                          |
+| `qagent skill`                 | Generate `qagent-skill.md` project context file      |
+| `qagent config iterations <n>` | Set max refinement iterations (1–8)                  |
+| `qagent status`                | Check provider, Chromium, and config                 |
 
 ---
 
-## Skill File
+## Skill file
 
-`qagent-skill.md` improves generation accuracy by telling the AI about your project:
-
-- Routes and their purpose
-- User flows and auth patterns
-- UI conventions (component library, design system)
-- API patterns
+`qagent-skill.md` is an optional context file that improves test generation accuracy. It tells the AI about your project's routes, user flows, auth patterns, and UI conventions.
 
 ```bash
-qagent skill   # scaffolds the file, then let Cursor/Claude fill it in
+qagent skill   # scaffolds the file
 ```
 
-> Without this: qagent infers from source and probe.  
-> With this: qagent understands your domain.
+Without it, qagent infers context from source and the browser probe. With it, qagent understands your domain.
 
 ---
 
-## AI Providers
+## AI providers
 
-### Local (recommended — free, private)
+**Local — Ollama (recommended)**
 
 ```bash
-ollama pull qwen2.5-coder:7b    # fast, private
-ollama pull qwen2.5-coder:14b   # higher quality
+ollama pull qwen2.5-coder:7b
+ollama pull qwen2.5-coder:14b
 ```
 
-### Cloud
+No API key, no cost, runs entirely on your machine.
+
+**Cloud**
 
 ```bash
 export OPENAI_API_KEY=sk-...
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-All three providers — Ollama, OpenAI, Anthropic. Select one during `qagent init` or switch anytime:
-
-```bash
-qagent models
-```
-
-The selected provider and model are used for all AI calls (generation, evaluation, explain). There is no fallback — whichever you configure is what runs.
+Select provider and model during `qagent init`, or switch at any time with `qagent models`. The configured provider is used for all AI calls — generation, evaluation, and explain. There is no fallback.
 
 ---
 
 ## Configuration
 
-| File                    | Purpose                                      |
-|-------------------------|----------------------------------------------|
-| `~/.qagentrc`           | Global AI provider + model                   |
-| `qagent-skill.md`       | Project context for the AI                   |
-| `.env` / `.env.local`   | Target project env — auto-loaded by qagent   |
+| File               | Purpose                                    |
+|--------------------|--------------------------------------------|
+| `.qagentrc`        | Project AI provider and model              |
+| `qagent-skill.md`  | Project context for AI (optional)          |
+| `.env.local`       | Target project env — auto-loaded by qagent |
 
 ---
 
@@ -209,25 +158,24 @@ The selected provider and model are used for all AI calls (generation, evaluatio
 
 ```
 src/
-├── probe/        # Real browser → accessibility tree + interaction ground truth
-├── analyzer/     # ts-morph AST analysis (component type, props, security)
-├── classifier/   # AST diff → SKIP / LIGHTWEIGHT / FULL_QA
-├── generator/    # Prompt construction + AI provider calls
-├── sanitizer/    # Deterministic post-generation fixes on AI output
-├── evaluator/    # Behavioral grading + refinement prompt builder
-├── runner/       # Spawns `npx playwright test`, parses JSON results
-├── routes/       # Reverse import graph: file → route(s)
-├── server/       # Dev server lifecycle + env loading
-├── agent/        # Agentic loops (security analysis)
-├── context/      # Per-file import graph for prompt context
-├── feedback/     # Cross-run failure persistence (clears on pass)
-├── scanner/      # Project detection (Next.js router, structure)
-├── preflight/    # Pre-run checks: model, API key, Chromium
-├── providers/    # Unified AI: Ollama, OpenAI, Anthropic
-├── reporter/     # Terminal output + markdown reports
-├── config/       # Config loading, types, defaults
-├── skill/        # Skill file template
-└── cli/          # Commands: watch, run, explain, hook, config, models, skill, status
+├── probe/        Real browser → accessibility tree + interaction state
+├── analyzer/     ts-morph AST analysis — component type, props, security
+├── classifier/   AST diff → skip / lightweight / full QA
+├── generator/    Prompt construction + AI provider calls
+├── sanitizer/    Deterministic post-generation fixes on AI output
+├── evaluator/    Behavioral grading + refinement prompt builder
+├── runner/       Spawns playwright test, parses JSON results
+├── routes/       Reverse import graph: changed file → route(s)
+├── server/       Dev server lifecycle + env loading
+├── context/      Per-file import graph for prompt context
+├── feedback/     Cross-run failure persistence (clears on pass)
+├── scanner/      Project structure detection (router type, hooks)
+├── preflight/    Pre-run checks — model, API key, Chromium
+├── providers/    Unified AI client — Ollama, OpenAI, Anthropic
+├── reporter/     Terminal output + markdown run reports
+├── config/       Config loading, types, defaults
+├── skill/        Skill file scaffolding
+└── cli/          Commands: init, watch, run, explain, config, models, skill, status
 ```
 
 ---
@@ -238,28 +186,35 @@ src/
 git clone https://github.com/Shanvit7/qagent.git
 cd qagent
 bun install
-bun run check        # typecheck + unit tests
+bun run check       # typecheck + tests
+bun run dev         # run CLI from source
+bun run dev -- run  # pass subcommands
+bun run build       # compile to dist/
 ```
 
-```bash
-bun run dev          # run CLI from source (no build needed)
-bun run dev -- run   # pass subcommands
-bun run build        # compile to dist/
-bun run test         # vitest unit tests
-bun run typecheck    # tsc --noEmit
-```
-
-See [docs/local-testing.md](docs/local-testing.md) for full local + integration testing guide.
+See [docs/local-testing.md](docs/local-testing.md) for the local integration testing guide.
 
 ---
 
 ## Requirements
 
 - Node.js 18+
-- Bun (for development)
 - Next.js project (App Router or Pages Router)
-- `@playwright/test` installed in the target project
-- Ollama, OpenAI key, or Anthropic key (at least one)
+- `@playwright/test` in the target project
+- One of: Ollama running locally, `OPENAI_API_KEY`, or `ANTHROPIC_API_KEY`
+
+> **Note**: qagent is currently in alpha. It works best with standard Next.js setups. If your project uses advanced patterns, you may encounter limitations — please [let us know](https://github.com/Shanvit7/qagent/issues)!
+
+---
+
+## Contributing & Feedback
+
+qagent is an open-source project driven by community input. Since it's in early development:
+
+- **Found a bug?** [Report it](https://github.com/Shanvit7/qagent/issues) with steps to reproduce
+- **Have ideas?** [Open a feature request](https://github.com/Shanvit7/qagent/issues)
+- **Want to contribute?** See [docs/contributing.md](docs/contributing.md) for setup and guidelines
+- **Join the discussion** on GitHub — every issue, PR, or star helps!
 
 ---
 

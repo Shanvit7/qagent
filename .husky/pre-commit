@@ -1,4 +1,2 @@
-#!/bin/sh
-# qagent-hook
-npx qagent run --hook
-exit $?
+bun run prettier:fix
+bun run lint

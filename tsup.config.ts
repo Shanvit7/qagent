@@ -1,19 +1,15 @@
-import { defineConfig } from "tsup";
-import { resolve } from "node:path";
+import { defineConfig } from 'tsup'
 
 export default defineConfig({
-  entry: { "cli/index": "src/cli/index.ts" },
-  format: ["esm"],
-  target: "node18",
-  platform: "node",
-  outDir: "dist",
+  entry: ['src/cli/index.ts'],
+  format: ['esm'],
   dts: true,
+  outDir: 'dist',
   clean: true,
-  splitting: false,
-  sourcemap: false,
-  shims: true,     // polyfill __dirname / __filename for ESM
-  treeshake: true,
-  alias: {
-    "@": resolve(__dirname, "src"),
+  target: 'node18',
+  platform: 'node',
+  // Do NOT bundle node_modules — let Node handle CJS/ESM interop natively
+  esbuildOptions(options) {
+    options.packages = 'external'
   },
-});
+})

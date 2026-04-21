@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "ESNext",
+    "module": "ES2022",
     "moduleResolution": "bundler",
     "lib": ["ES2022", "DOM"],
     "strict": true,
@@ -16,6 +16,7 @@
     "sourceMap": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "skipDefaultLibCheck": true,
     "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {

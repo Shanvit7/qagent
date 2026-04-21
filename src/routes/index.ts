@@ -12,8 +12,8 @@
  *   - Pages router fallback for projects using pages/
  */
 
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative, resolve, dirname, extname } from "node:path";
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, relative, resolve, dirname, extname } from 'node:path';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -23,7 +23,7 @@ export interface RouteEntry {
   /** Absolute path to the page.tsx or layout.tsx file */
   filePath: string;
   /** "page" or "layout" */
-  kind: "page" | "layout";
+  kind: 'page' | 'layout';
 }
 
 export interface RouteMatch {
@@ -46,15 +46,19 @@ export interface RouteMap {
 // ─── tsconfig alias resolution (reused from context module) ───────────────────
 
 const loadTsconfigPaths = (cwd: string): Record<string, string[]> => {
-  const candidates = ["tsconfig.json", "tsconfig.app.json", "tsconfig.base.json"];
+  const candidates = ['tsconfig.json', 'tsconfig.app.json', 'tsconfig.base.json'];
   for (const name of candidates) {
     const p = join(cwd, name);
     if (!existsSync(p)) continue;
     try {
-      const raw = readFileSync(p, "utf8").replace(/\/\/.*$/gm, "").replace(/,(\s*[}\]])/g, "$1");
+      const raw = readFileSync(p, 'utf8')
+        .replace(/\/\/.*$/gm, '')
+        .replace(/,(\s*[}\]])/g, '$1');
       const cfg = JSON.parse(raw) as { compilerOptions?: { paths?: Record<string, string[]> } };
       return cfg.compilerOptions?.paths ?? {};
-    } catch { /* malformed tsconfig — skip */ }
+    } catch {
+      /* malformed tsconfig — skip */
+    }
   }
   return {};
 };
@@ -62,29 +66,33 @@ const loadTsconfigPaths = (cwd: string): Record<string, string[]> => {
 let _tsconfigPaths: Record<string, string[]> | null = null;
 
 const isFile = (p: string): boolean => {
-  try { return statSync(p).isFile(); } catch { return false; }
+  try {
+    return statSync(p).isFile();
+  } catch {
+    return false;
+  }
 };
 
 const resolveAlias = (specifier: string, cwd: string): string | null => {
   if (!_tsconfigPaths) _tsconfigPaths = loadTsconfigPaths(cwd);
 
   for (const [alias, targets] of Object.entries(_tsconfigPaths)) {
-    const prefix = alias.replace(/\*$/, "");
+    const prefix = alias.replace(/\*$/, '');
     if (!specifier.startsWith(prefix)) continue;
     const suffix = specifier.slice(prefix.length);
     for (const target of targets) {
-      const base = target.replace(/\*$/, "");
+      const base = target.replace(/\*$/, '');
       const resolved = resolve(cwd, base + suffix);
-      for (const ext of ["", ".ts", ".tsx", ".js", "/index.ts", "/index.tsx"]) {
+      for (const ext of ['', '.ts', '.tsx', '.js', '/index.ts', '/index.tsx']) {
         if (existsSync(resolved + ext) && isFile(resolved + ext)) return resolved + ext;
       }
     }
   }
 
-  if (specifier.startsWith("@/")) {
+  if (specifier.startsWith('@/')) {
     const rel = specifier.slice(2);
-    for (const root of ["src", "app", "."]) {
-      for (const ext of ["", ".ts", ".tsx", ".js", "/index.ts", "/index.tsx"]) {
+    for (const root of ['src', 'app', '.']) {
+      for (const ext of ['', '.ts', '.tsx', '.js', '/index.ts', '/index.tsx']) {
         const candidate = join(cwd, root, rel + ext);
         if (existsSync(candidate) && isFile(candidate)) return candidate;
       }
@@ -96,14 +104,14 @@ const resolveAlias = (specifier: string, cwd: string): string | null => {
 
 const resolveRelative = (specifier: string, fromFile: string): string | null => {
   const base = resolve(dirname(fromFile), specifier);
-  for (const ext of ["", ".ts", ".tsx", ".js", "/index.ts", "/index.tsx"]) {
+  for (const ext of ['', '.ts', '.tsx', '.js', '/index.ts', '/index.tsx']) {
     if (existsSync(base + ext) && isFile(base + ext)) return base + ext;
   }
   return null;
 };
 
 const resolveSpecifier = (specifier: string, fromFile: string, cwd: string): string | null => {
-  if (specifier.startsWith(".")) return resolveRelative(specifier, fromFile);
+  if (specifier.startsWith('.')) return resolveRelative(specifier, fromFile);
   return resolveAlias(specifier, cwd);
 };
 
@@ -111,14 +119,14 @@ const resolveSpecifier = (specifier: string, fromFile: string, cwd: string): str
 
 const extractLocalImports = (filePath: string, cwd: string): string[] => {
   try {
-    const source = readFileSync(filePath, "utf8");
+    const source = readFileSync(filePath, 'utf8');
     const imports: string[] = [];
     const importRegex = /import\s+(?:type\s+)?(?:.+?)\s+from\s+['"]([^'"]+)['"]/g;
 
     for (const match of source.matchAll(importRegex)) {
-      const spec = match[1] ?? "";
+      const spec = match[1] ?? '';
       // Skip node_modules / bare specifiers (unless aliased)
-      if (!spec.startsWith(".") && !spec.startsWith("@/") && !spec.startsWith("~/")) continue;
+      if (!spec.startsWith('.') && !spec.startsWith('@/') && !spec.startsWith('~/')) continue;
 
       const resolved = resolveSpecifier(spec, filePath, cwd);
       if (resolved) imports.push(resolved);
@@ -132,15 +140,17 @@ const extractLocalImports = (filePath: string, cwd: string): string[] => {
 
 // ─── Route discovery ──────────────────────────────────────────────────────────
 
-const CODE_EXTS = new Set([".ts", ".tsx", ".js", ".jsx"]);
-const IGNORE_DIRS = new Set(["node_modules", ".git", ".next", "dist", "build", ".qagent", "api"]);
+const CODE_EXTS = new Set(['.ts', '.tsx', '.js', '.jsx']);
+const IGNORE_DIRS = new Set(['node_modules', '.git', '.next', 'dist', 'build', '.qagent', 'api']);
 
 const walkDir = (dir: string, maxDepth = 6, depth = 0): string[] => {
   if (depth > maxDepth || !existsSync(dir)) return [];
   try {
     return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
       if (entry.isDirectory()) {
-        return IGNORE_DIRS.has(entry.name) ? [] : walkDir(join(dir, entry.name), maxDepth, depth + 1);
+        return IGNORE_DIRS.has(entry.name)
+          ? []
+          : walkDir(join(dir, entry.name), maxDepth, depth + 1);
       }
       return CODE_EXTS.has(extname(entry.name)) ? [join(dir, entry.name)] : [];
     });
@@ -152,27 +162,27 @@ const walkDir = (dir: string, maxDepth = 6, depth = 0): string[] => {
 /** Convert app/ file path to URL route */
 const filePathToRoute = (filePath: string, appDir: string): string => {
   const rel = relative(appDir, dirname(filePath));
-  if (!rel || rel === ".") return "/";
+  if (!rel || rel === '.') return '/';
 
   // Remove route groups: (marketing)/pricing → pricing
   // Remove parallel route slots: @header, @sidebar → not navigable on their own
-  const segments = rel.split("/").filter((s) => !s.startsWith("(") && !s.startsWith("@"));
-  return "/" + segments.join("/");
+  const segments = rel.split('/').filter((s) => !s.startsWith('(') && !s.startsWith('@'));
+  return '/' + segments.join('/');
 };
 
 const findAppRouterEntries = (cwd: string): RouteEntry[] => {
-  const appDir = existsSync(join(cwd, "src", "app")) ? join(cwd, "src", "app") : join(cwd, "app");
+  const appDir = existsSync(join(cwd, 'src', 'app')) ? join(cwd, 'src', 'app') : join(cwd, 'app');
   if (!existsSync(appDir)) return [];
 
   const entries: RouteEntry[] = [];
   const files = walkDir(appDir);
 
   for (const f of files) {
-    const base = f.split("/").pop() ?? "";
+    const base = f.split('/').pop() ?? '';
     if (/^page\.(tsx?|jsx?)$/.test(base)) {
-      entries.push({ route: filePathToRoute(f, appDir), filePath: f, kind: "page" });
+      entries.push({ route: filePathToRoute(f, appDir), filePath: f, kind: 'page' });
     } else if (/^layout\.(tsx?|jsx?)$/.test(base)) {
-      entries.push({ route: filePathToRoute(f, appDir), filePath: f, kind: "layout" });
+      entries.push({ route: filePathToRoute(f, appDir), filePath: f, kind: 'layout' });
     }
   }
 
@@ -180,20 +190,22 @@ const findAppRouterEntries = (cwd: string): RouteEntry[] => {
 };
 
 const findPagesRouterEntries = (cwd: string): RouteEntry[] => {
-  const pagesDir = existsSync(join(cwd, "src", "pages")) ? join(cwd, "src", "pages") : join(cwd, "pages");
+  const pagesDir = existsSync(join(cwd, 'src', 'pages'))
+    ? join(cwd, 'src', 'pages')
+    : join(cwd, 'pages');
   if (!existsSync(pagesDir)) return [];
 
   const entries: RouteEntry[] = [];
   const files = walkDir(pagesDir);
 
   for (const f of files) {
-    const base = f.split("/").pop() ?? "";
-    if (base.startsWith("_")) continue; // _app, _document, _error
+    const base = f.split('/').pop() ?? '';
+    if (base.startsWith('_')) continue; // _app, _document, _error
     if (!/\.(tsx?|jsx?)$/.test(base)) continue;
 
-    const rel = relative(pagesDir, f).replace(/\.(tsx?|jsx?)$/, "");
-    const route = rel === "index" ? "/" : `/${rel.replace(/\/index$/, "")}`;
-    entries.push({ route, filePath: f, kind: "page" });
+    const rel = relative(pagesDir, f).replace(/\.(tsx?|jsx?)$/, '');
+    const route = rel === 'index' ? '/' : `/${rel.replace(/\/index$/, '')}`;
+    entries.push({ route, filePath: f, kind: 'page' });
   }
 
   return entries;
@@ -201,11 +213,18 @@ const findPagesRouterEntries = (cwd: string): RouteEntry[] => {
 
 // ─── Build reverse graph ──────────────────────────────────────────────────────
 
-const buildForwardGraph = (entryFiles: string[], cwd: string, maxDepth = 5): Map<string, Set<string>> => {
+const buildForwardGraph = (
+  entryFiles: string[],
+  cwd: string,
+  maxDepth = 5,
+): Map<string, Set<string>> => {
   /** forward: file → files it imports */
   const forward = new Map<string, Set<string>>();
   const visited = new Set<string>();
-  const queue: Array<{ file: string; depth: number }> = entryFiles.map((f) => ({ file: f, depth: 0 }));
+  const queue: Array<{ file: string; depth: number }> = entryFiles.map((f) => ({
+    file: f,
+    depth: 0,
+  }));
 
   while (queue.length > 0) {
     const item = queue.shift()!;
@@ -249,10 +268,7 @@ export const buildRouteMap = (cwd: string): RouteMap => {
   // Reset tsconfig paths cache per build
   _tsconfigPaths = null;
 
-  const entries = [
-    ...findAppRouterEntries(cwd),
-    ...findPagesRouterEntries(cwd),
-  ];
+  const entries = [...findAppRouterEntries(cwd), ...findPagesRouterEntries(cwd)];
 
   const routeIndex: RouteIndex = new Map();
   for (const entry of entries) {
@@ -304,9 +320,9 @@ export const findRoutesForFile = (
       const entry = routeIndex.get(importer);
       if (entry) {
         // Layout components → only "/" to avoid testing every page
-        if (entry.kind === "layout") {
-          if (!matches.some((m) => m.route === "/")) {
-            matches.push({ route: "/", depth: item.depth + 1 });
+        if (entry.kind === 'layout') {
+          if (!matches.some((m) => m.route === '/')) {
+            matches.push({ route: '/', depth: item.depth + 1 });
           }
         } else {
           matches.push({ route: entry.route, depth: item.depth + 1 });
@@ -333,11 +349,7 @@ export const findRoutesForFile = (
  * Incrementally update the route map when a file changes.
  * Re-walks only the changed file's imports and updates edges.
  */
-export const updateRouteMap = (
-  routeMap: RouteMap,
-  changedFile: string,
-  cwd: string,
-): void => {
+export const updateRouteMap = (routeMap: RouteMap, changedFile: string, cwd: string): void => {
   const absPath = resolve(changedFile);
   const { reverseGraph } = routeMap;
 

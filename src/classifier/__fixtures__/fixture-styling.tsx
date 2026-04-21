@@ -1,5 +1,6 @@
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-nocheck — fixture is parsed by ts-morph for AST region mapping, not compiled
-import styled from "styled-components";
+import styled from 'styled-components';
 
 const Wrapper = styled.div`
   padding: 16px;
@@ -15,7 +16,7 @@ export const Card = ({ title }: CardProps) => {
   return (
     <Wrapper>
       <h2
-        style={{ fontWeight: "bold" }}
+        style={{ fontWeight: 'bold' }}
         className="card-title"
         data-testid="card-heading"
         aria-label={title}

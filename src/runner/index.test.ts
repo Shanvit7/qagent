@@ -1,150 +1,194 @@
-import { describe, it, expect } from "vitest";
-import { parsePlaywrightJson, wrapWithNetworkGuard } from "./index";
+import { describe, it, expect } from 'vitest';
+import { parsePlaywrightJson, wrapWithNetworkGuard, detectPlaywrightBrowsers } from './index';
 
-describe("runner", () => {
-  describe("parsePlaywrightJson", () => {
-    it("parses passing test results", () => {
+describe('runner', () => {
+  describe('parsePlaywrightJson', () => {
+    it('parses passing test results', () => {
       const report = {
-        suites: [{
-          title: "header.spec.ts",
-          specs: [{
-            title: "page loads",
-            tests: [{
-              results: [{
-                title: "page loads",
-                status: "passed",
-                duration: 150,
-                errors: [],
-                attachments: [],
-              }],
-            }],
-          }],
-          suites: [],
-        }],
+        suites: [
+          {
+            title: 'header.spec.ts',
+            specs: [
+              {
+                title: 'page loads',
+                tests: [
+                  {
+                    results: [
+                      {
+                        title: 'page loads',
+                        status: 'passed',
+                        duration: 150,
+                        errors: [],
+                        attachments: [],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+            suites: [],
+          },
+        ],
       };
 
       const cases = parsePlaywrightJson(JSON.stringify(report));
       expect(cases).toHaveLength(1);
-      expect(cases[0]!.status).toBe("pass");
-      expect(cases[0]!.name).toContain("page loads");
+      expect(cases[0]!.status).toBe('pass');
+      expect(cases[0]!.name).toContain('page loads');
       expect(cases[0]!.durationMs).toBe(150);
     });
 
-    it("parses failing test with error message", () => {
+    it('parses failing test with error message', () => {
       const report = {
-        suites: [{
-          title: "suite",
-          specs: [{
-            title: "clicks button",
-            tests: [{
-              results: [{
-                title: "clicks button",
-                status: "failed",
-                duration: 500,
-                errors: [{ message: "Timeout 15000ms exceeded.\nwaiting for getByRole('button')" }],
-                attachments: [],
-              }],
-            }],
-          }],
-          suites: [],
-        }],
-      };
-
-      const cases = parsePlaywrightJson(JSON.stringify(report));
-      expect(cases).toHaveLength(1);
-      expect(cases[0]!.status).toBe("fail");
-      expect(cases[0]!.failureMessage).toContain("Timeout");
-    });
-
-    it("parses screenshot attachment", () => {
-      const report = {
-        suites: [{
-          title: "suite",
-          specs: [{
-            title: "test",
-            tests: [{
-              results: [{
-                title: "test",
-                status: "failed",
-                duration: 100,
-                errors: [{ message: "fail" }],
-                attachments: [{ name: "screenshot", path: "/tmp/shot.png" }],
-              }],
-            }],
-          }],
-          suites: [],
-        }],
-      };
-
-      const cases = parsePlaywrightJson(JSON.stringify(report));
-      expect(cases[0]!.screenshotPath).toBe("/tmp/shot.png");
-    });
-
-    it("handles nested suites", () => {
-      const report = {
-        suites: [{
-          title: "outer",
-          specs: [],
-          suites: [{
-            title: "inner",
-            specs: [{
-              title: "nested test",
-              tests: [{
-                results: [{
-                  title: "nested test",
-                  status: "passed",
-                  duration: 50,
-                  errors: [],
-                  attachments: [],
-                }],
-              }],
-            }],
+        suites: [
+          {
+            title: 'suite',
+            specs: [
+              {
+                title: 'clicks button',
+                tests: [
+                  {
+                    results: [
+                      {
+                        title: 'clicks button',
+                        status: 'failed',
+                        duration: 500,
+                        errors: [
+                          { message: "Timeout 15000ms exceeded.\nwaiting for getByRole('button')" },
+                        ],
+                        attachments: [],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
             suites: [],
-          }],
-        }],
+          },
+        ],
       };
 
       const cases = parsePlaywrightJson(JSON.stringify(report));
       expect(cases).toHaveLength(1);
-      expect(cases[0]!.name).toContain("outer");
-      expect(cases[0]!.name).toContain("inner");
+      expect(cases[0]!.status).toBe('fail');
+      expect(cases[0]!.failureMessage).toContain('Timeout');
     });
 
-    it("returns empty array for invalid JSON", () => {
-      expect(parsePlaywrightJson("not json")).toEqual([]);
+    it('parses screenshot attachment', () => {
+      const report = {
+        suites: [
+          {
+            title: 'suite',
+            specs: [
+              {
+                title: 'test',
+                tests: [
+                  {
+                    results: [
+                      {
+                        title: 'test',
+                        status: 'failed',
+                        duration: 100,
+                        errors: [{ message: 'fail' }],
+                        attachments: [{ name: 'screenshot', path: '/tmp/shot.png' }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+            suites: [],
+          },
+        ],
+      };
+
+      const cases = parsePlaywrightJson(JSON.stringify(report));
+      expect(cases[0]!.screenshotPath).toBe('/tmp/shot.png');
     });
 
-    it("returns empty array for empty suites", () => {
+    it('handles nested suites', () => {
+      const report = {
+        suites: [
+          {
+            title: 'outer',
+            specs: [],
+            suites: [
+              {
+                title: 'inner',
+                specs: [
+                  {
+                    title: 'nested test',
+                    tests: [
+                      {
+                        results: [
+                          {
+                            title: 'nested test',
+                            status: 'passed',
+                            duration: 50,
+                            errors: [],
+                            attachments: [],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+                suites: [],
+              },
+            ],
+          },
+        ],
+      };
+
+      const cases = parsePlaywrightJson(JSON.stringify(report));
+      expect(cases).toHaveLength(1);
+      expect(cases[0]!.name).toContain('outer');
+      expect(cases[0]!.name).toContain('inner');
+    });
+
+    it('returns empty array for invalid JSON', () => {
+      expect(parsePlaywrightJson('not json')).toEqual([]);
+    });
+
+    it('returns empty array for empty suites', () => {
       expect(parsePlaywrightJson(JSON.stringify({ suites: [] }))).toEqual([]);
     });
 
-    it("maps timedOut status to fail", () => {
+    it('maps timedOut status to fail', () => {
       const report = {
-        suites: [{
-          title: "suite",
-          specs: [{
-            title: "slow test",
-            tests: [{
-              results: [{
-                title: "slow test",
-                status: "timedOut",
-                duration: 15000,
-                errors: [],
-                attachments: [],
-              }],
-            }],
-          }],
-          suites: [],
-        }],
+        suites: [
+          {
+            title: 'suite',
+            specs: [
+              {
+                title: 'slow test',
+                tests: [
+                  {
+                    results: [
+                      {
+                        title: 'slow test',
+                        status: 'timedOut',
+                        duration: 15000,
+                        errors: [],
+                        attachments: [],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+            suites: [],
+          },
+        ],
       };
 
       const cases = parsePlaywrightJson(JSON.stringify(report));
-      expect(cases[0]!.status).toBe("fail");
+      expect(cases[0]!.status).toBe('fail');
     });
   });
 
-  describe("wrapWithNetworkGuard", () => {
-    it("strips playwright imports and injects guard", () => {
+  describe('wrapWithNetworkGuard', () => {
+    it('strips playwright imports and injects guard', () => {
       const code = `import { test, expect } from "@playwright/test";
 
 test("works", async ({ page }) => {
@@ -152,16 +196,23 @@ test("works", async ({ page }) => {
   await page.getByRole("button", { name: "Save" }).click();
 });`;
 
-      const wrapped = wrapWithNetworkGuard(code, "http://localhost:3000");
-      expect(wrapped).toContain("const ORIGIN = \"http://localhost:3000\"");
-      expect(wrapped).toContain("route.abort()");
-      expect(wrapped).not.toContain("import { test, expect } from \"@playwright/test\"");
-      expect(wrapped).toContain("test(\"works\"");
+      const wrapped = wrapWithNetworkGuard(code, 'http://localhost:3000');
+      expect(wrapped).toContain('const ORIGIN = "http://localhost:3000"');
+      expect(wrapped).toContain('route.abort()');
+      expect(wrapped).not.toContain('import { test, expect } from "@playwright/test"');
+      expect(wrapped).toContain('test("works"');
     });
 
-    it("falls back when serverUrl is invalid", () => {
-      const wrapped = wrapWithNetworkGuard("test('x', async ()=>{});", "not a url");
-      expect(wrapped).toContain("const ORIGIN = \"\"");
+    it('falls back when serverUrl is invalid', () => {
+      const wrapped = wrapWithNetworkGuard("test('x', async ()=>{});", 'not a url');
+      expect(wrapped).toContain('const ORIGIN = ""');
+    });
+  });
+
+  describe('detectPlaywrightBrowsers', () => {
+    it('returns a boolean', async () => {
+      const result = await detectPlaywrightBrowsers(process.cwd());
+      expect(typeof result).toBe('boolean');
     });
   });
 });

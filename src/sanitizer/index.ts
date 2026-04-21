@@ -32,23 +32,25 @@ const fixTailwindSlashClasses = (code: string): { code: string; fired: boolean }
   // Match locator calls whose argument contains a CSS class with /
   // e.g. page.locator('span.text-xs.text-muted-foreground/50')
   //      page.locator("div.bg-primary/20.rounded")
-  const SLASH_CLASS_IN_LOCATOR = /(\.(locator|querySelector)\s*\(\s*(['"`]))([^'"`]*?\.[\w-]+\/[\w.[\]%-]+)(['"`]\s*\))/g;
+  const SLASH_CLASS_IN_LOCATOR =
+    /(\.(locator|querySelector)\s*\(\s*(['"`]))([^'"`]*?\.[\w-]+\/[\w.[\]%-]+)(['"`]\s*\))/g;
 
   let fired = false;
-  const result = code.replace(SLASH_CLASS_IN_LOCATOR, (match, prefix, _method, _q, selectorBody, suffix) => {
-    fired = true;
-    // Extract the tag name if present (e.g. "span" from "span.text-xs.text-muted-foreground/50")
-    const tagMatch = selectorBody.match(/^([a-z][a-z0-9]*)/i);
-    // Keep only classes that don't contain /
-    const classes = selectorBody.match(/\.[\w-]+(?:\/[\w.[\]%-]+)?/g) ?? [];
-    const safeClasses = classes
-      .filter((c: string) => !c.includes("/"))
-      .join("");
+  const result = code.replace(
+    SLASH_CLASS_IN_LOCATOR,
+    (match, prefix, _method, _q, selectorBody, suffix) => {
+      fired = true;
+      // Extract the tag name if present (e.g. "span" from "span.text-xs.text-muted-foreground/50")
+      const tagMatch = selectorBody.match(/^([a-z][a-z0-9]*)/i);
+      // Keep only classes that don't contain /
+      const classes = selectorBody.match(/\.[\w-]+(?:\/[\w.[\]%-]+)?/g) ?? [];
+      const safeClasses = classes.filter((c: string) => !c.includes('/')).join('');
 
-    const tag = tagMatch ? tagMatch[1] : "*";
-    const newSelector = safeClasses ? `${tag}${safeClasses}` : tag;
-    return `${prefix}${newSelector}${suffix}`;
-  });
+      const tag = tagMatch ? tagMatch[1] : '*';
+      const newSelector = safeClasses ? `${tag}${safeClasses}` : tag;
+      return `${prefix}${newSelector}${suffix}`;
+    },
+  );
 
   return { code: result, fired };
 };
@@ -62,7 +64,7 @@ const fixWaitForTimeout = (code: string): { code: string; fired: boolean } => {
   let fired = false;
   const result = code.replace(pattern, () => {
     fired = true;
-    return "// waitForTimeout removed — use waitForSelector or expect().toBeVisible() instead";
+    return '// waitForTimeout removed — use waitForSelector or expect().toBeVisible() instead';
   });
   return { code: result, fired };
 };
@@ -78,7 +80,8 @@ const fixWaitForTimeout = (code: string): { code: string; fired: boolean } => {
 const fixStrictModeOnCssSelectors = (code: string): { code: string; fired: boolean } => {
   // page.locator('.foo').click() → page.locator('.foo').first().click()
   // but NOT page.locator('.foo').first().click() (already scoped)
-  const pattern = /(page\.locator\s*\(\s*['"`]\.[^'"`]+['"`]\s*\))(?!\.first\(\))(\.(?:click|fill|check|uncheck|press|selectOption|tap|hover|focus|type|clear)\s*\()/g;
+  const pattern =
+    /(page\.locator\s*\(\s*['"`]\.[^'"`]+['"`]\s*\))(?!\.first\(\))(\.(?:click|fill|check|uncheck|press|selectOption|tap|hover|focus|type|clear)\s*\()/g;
   let fired = false;
   const result = code.replace(pattern, (_match, locatorPart, actionPart) => {
     fired = true;
@@ -98,13 +101,22 @@ export const sanitizeTestCode = (code: string): SanitizeResult => {
   let current = code;
 
   const tw = fixTailwindSlashClasses(current);
-  if (tw.fired) { current = tw.code; applied.push("tailwind-slash-class"); }
+  if (tw.fired) {
+    current = tw.code;
+    applied.push('tailwind-slash-class');
+  }
 
   const wt = fixWaitForTimeout(current);
-  if (wt.fired) { current = wt.code; applied.push("waitForTimeout"); }
+  if (wt.fired) {
+    current = wt.code;
+    applied.push('waitForTimeout');
+  }
 
   const sm = fixStrictModeOnCssSelectors(current);
-  if (sm.fired) { current = sm.code; applied.push("strict-mode-css"); }
+  if (sm.fired) {
+    current = sm.code;
+    applied.push('strict-mode-css');
+  }
 
   return { code: current, applied };
 };

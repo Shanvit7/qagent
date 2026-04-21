@@ -124,66 +124,64 @@ A failing behavioral test means a user flow is broken. A failing attribute test 
 src/
 ├── cli/
 │   ├── index.ts              # Entry point
-│   ├── program.ts            # Commander subcommand registration
-│   └── commands/
-│       ├── init.ts           # Setup wizard
-│       ├── run.ts            # Core pipeline: classify → probe → generate → loop → report
-│       ├── watch.ts          # Background CI: watches .git/index + .env* files
-│       ├── explain.ts        # AI explains last failure
-│       ├── hook.ts           # Enable/disable pre-commit git hook
-│       ├── config.ts         # Runtime config (e.g., qagent config iterations 6)
-│       ├── models.ts         # Provider + model selection
-│       ├── skill.ts          # Skill file creation + IDE prompt
-│       └── status.ts         # Config + provider health
+│   ├── program.tsx           # Commander setup + Ink UI routing (smart init vs help)
+│   └── commands/*.tsx        # CLI commands (Ink-based UIs: init, run, watch, etc.)
+├── ui/
+│   ├── screens/*.tsx         # Ink UI screens (InitWizard, HelpScreen, StatusScreen, etc.)
+│   └── components/*.tsx      # Reusable Ink components (ProgressBar, TestResults, etc.)
+├── config/
+│   ├── loader.ts             # Load per-project .qagentrc from cwd
+│   └── types.ts              # TypeScript interfaces (QAgentConfig, etc.)
 ├── probe/
 │   └── index.ts              # Runtime probe: real browser → a11y tree + interaction outcomes
-│                             # probeRoute() + formatProbeForPrompt()
-│                             # Env-aware: injects loadProjectEnv() into subprocess
 ├── analyzer/
-│   └── index.ts              # Component type, props, security findings from source
+│   └── index.ts              # ts-morph AST analysis (component types, props, security)
 ├── classifier/
-│   └── index.ts              # AST diff → SKIP / LIGHTWEIGHT / FULL_QA + changed regions
+│   └── index.ts              # AST diff → SKIP / LIGHTWEIGHT / FULL_QA
 ├── generator/
-│   └── index.ts              # Builds generation prompt (source + probe) → AI → test code
-├── sanitizer/
-│   └── index.ts              # Deterministic post-generation transforms on AI test code
+│   └── index.ts              # AI prompt construction + provider calls
 ├── evaluator/
-│   ├── criteria.ts           # Weighted grading criteria (behavioral focus)
-│   └── index.ts              # AI grader + refinement prompt builder
+│   ├── index.ts              # Test grading + refinement prompts
+│   └── criteria.ts           # Behavioral grading criteria
 ├── runner/
-│   └── index.ts              # Spawns `npx playwright test --reporter json`, parses results
-│                             # Browser detection + auto-install, screenshot capture on failure
+│   └── index.ts              # Playwright test execution wrapper
+├── sanitizer/
+│   └── index.ts              # Deterministic post-gen code fixes
+├── reporter/
+│   └── index.ts              # Terminal output formatting
 ├── routes/
 │   └── index.ts              # Reverse import graph: component → routes
 ├── server/
-│   └── index.ts              # Dev server lifecycle + loadProjectEnv()
-│                             # Auto-detect command, health poll, clean shutdown
+│   └── index.ts              # Dev server lifecycle + env loading
 ├── context/
-│   └── index.ts              # Per-file import graph for prompt context
+│   └── index.ts              # Per-file import graph for prompts
 ├── scanner/
-│   └── index.ts              # Project scan: router type, structure detection
-├── agent/
-│   └── security.ts           # Security analysis via agentic grep/read loop
-├── feedback/
-│   └── index.ts              # Cross-run failure persistence (clears on pass)
+│   └── index.ts              # Project structure detection
 ├── preflight/
-│   └── index.ts              # Pre-run checks: model, API key, Chromium
+│   └── index.ts              # Pre-run checks (model, API key, Chromium)
 ├── providers/
-│   └── index.ts              # Unified AI: Ollama (primary), OpenAI, Anthropic (fallback)
-├── reporter/
-│   └── index.ts              # Terminal tree + markdown report
-├── config/
-│   ├── types.ts              # QAgentConfig, AiConfig, QaLens
-│   └── loader.ts             # Merge ~/.qagentrc + skill file
-│                             # readIterations() / writeIterations()
+│   └── index.ts              # Unified AI interface (Ollama, OpenAI, Anthropic)
+├── utils/
+│   ├── packageManager.ts     # Detect package manager by lockfile
+│   └── prompt.ts             # Interactive helpers
 ├── skill/
-│   └── template.ts           # Skill file template + IDE prompt
-└── utils/
-    ├── packageManager.ts     # Detect PM by lockfile
-    └── prompt.ts             # Interactive prompt helpers
+│   └── template.ts           # Skill file scaffolding
+├── feedback/
+│   └── index.ts              # Cross-run failure persistence
+└── agent/
+    └── security.ts           # Agentic security analysis
 ```
 
----
+## CLI & UI
+
+`src/cli/` — Commander.js for argument parsing, Ink for terminal UI.
+
+- **Smart entry**: `qagent` (no args) checks for `.qagentrc` in cwd; if exists → show help screen, else → run init wizard
+- **Commands**: Each in `src/cli/commands/*.tsx`, using Ink for interactive UIs
+- **Screens**: `src/ui/screens/` — reusable Ink components (InitWizard, HelpScreen, etc.)
+- **Components**: `src/ui/components/` — ProgressBar, TestResults, Confirm, etc.
+
+UI follows consistent patterns: cyan for headers, green for success, red for errors, dimColor for secondary info.
 
 ## Generator–Evaluator Loop
 
@@ -246,7 +244,7 @@ playwright: page.goto("/") → assert header behavior
 | OpenAI | `OPENAI_API_KEY` | `gpt-4o` |
 | Anthropic | `ANTHROPIC_API_KEY` | `claude-sonnet-4` |
 
-All three are equal first-class choices. The user selects a provider and model during `qagent init` or via `qagent models` — whichever is configured is used for all AI calls. Keys loaded from: shell env → target project `.env*` files → `~/.qagentrc`.
+All three are equal first-class choices. The user selects a provider and model during `qagent init` or via `qagent models` — whichever is configured is used for all AI calls. Configuration is stored in `.qagentrc` in the project root. Keys loaded from: shell env → target project `.env*` files → project `.qagentrc`.
 
 ---
 
@@ -274,7 +272,11 @@ This is not a reimplementation of Playwright — it is a thin orchestration wrap
 
 **Interaction outcomes eliminate stale locators.** For toggle elements, the probe clicks them in a fresh context and records what changes. The generator receives explicit before/after state: "Open menu → click → becomes Close menu". No inference needed, no stale locator possible.
 
-**Stage-based, not commit-based.** qagent runs on `git add` (staged changes), not on commit. Developers get feedback before they commit, with no blocking in watch mode.
+**Stage-based.** qagent runs on `git add` (staged changes). Developers get feedback before they commit, with no blocking in watch mode.
+
+**Per-project configuration.** Each target project has its own `.qagentrc` for AI settings, allowing different configs per project without global state conflicts.
+
+**Strict Next.js enforcement.** The init wizard checks for Next.js in package.json and aborts if not found, ensuring compatibility and preventing confusion.
 
 **Env loaded everywhere it matters.** The same `loadProjectEnv()` call feeds the dev server, the probe subprocess, and the Playwright test runner. Env file changes trigger automatic dev server restart in watch mode.
 
@@ -289,9 +291,12 @@ This is not a reimplementation of Playwright — it is a thin orchestration wrap
 | Package | Purpose |
 |---------|---------|
 | `@playwright/test` (peer) | Browser automation + test runner — must be in target project |
-| `@clack/prompts` | Terminal UI (spinners, prompts, log formatting) |
+| `ink` | Terminal UI (React-based components for spinners, prompts, log formatting) |
+| `ink-box` | Layout components for terminal UI |
+| `ink-select-input` | Select input component for terminal UI |
+| `ink-text-input` | Text input component for terminal UI |
+| `react` | React for Ink UI components |
 | `commander` | CLI argument parsing |
 | `ollama` | Ollama SDK (primary AI provider) |
-| `picocolors` | Terminal colors |
 | `simple-git` | Git operations (staged files, diffs) |
 | `ts-morph` | TypeScript AST for classifier and analyzer |

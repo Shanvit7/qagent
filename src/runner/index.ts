@@ -3,16 +3,16 @@
  * parses JSON results, captures screenshots on failure.
  */
 
-import { writeFileSync, unlinkSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { spawn } from "node:child_process";
-import { loadProjectEnv } from "@/server/index";
+import { writeFileSync, unlinkSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { spawn } from 'node:child_process';
+import { loadProjectEnv } from '@/server/index';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface TestCase {
   name: string;
-  status: "pass" | "fail" | "skip";
+  status: 'pass' | 'fail' | 'skip';
   durationMs: number;
   failureMessage?: string | undefined;
   screenshotPath?: string | undefined;
@@ -29,8 +29,8 @@ export interface StructuredTestResult {
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
-const getTempDir = (cwd: string): string => join(cwd, ".qagent", "tmp");
-const getScreenshotDir = (cwd: string): string => join(cwd, ".qagent", "screenshots");
+const getTempDir = (cwd: string): string => join(cwd, '.qagent', 'tmp');
+const getScreenshotDir = (cwd: string): string => join(cwd, '.qagent', 'screenshots');
 
 // ─── Playwright browser bootstrap ─────────────────────────────────────────────
 
@@ -38,62 +38,27 @@ const getScreenshotDir = (cwd: string): string => join(cwd, ".qagent", "screensh
  * Detect whether Playwright's Chromium browser binary is installed
  * for the **target project's** Playwright version.
  *
- * Resolves the executable path via the target project's Playwright
- * and checks if the file exists on disk.
- */
-/**
- * Detect whether Playwright's Chromium browser binary is installed
- * for the **target project's** Playwright version.
- *
- * Strategy (in order):
- *  1. `playwright-core` — the sub-package that @playwright/test always depends on,
- *     and whose `chromium.executablePath()` is the stable API for this use case.
- *  2. `@playwright/test` direct fallback — in case playwright-core isn't resolvable
- *     separately (monorepo setups, some pnpm configurations).
- *
- * Both are resolved from the target project's `cwd` so we get the right browser
- * revision for the version the project has installed.
- *
- * Returns true only when the binary file actually exists on disk.
+ * Checks if @playwright/test is installed and Chromium executable is available.
  */
 export const detectPlaywrightBrowsers = async (cwd: string): Promise<boolean> => {
   return new Promise((resolve) => {
     const script = `
-      const fs = require('fs');
-      let execPath = '';
-
-      // Prefer playwright-core — it has the stable executablePath() API
-      // and is always a dependency of @playwright/test.
       try {
-        const pw = require('playwright-core');
-        execPath = pw.chromium.executablePath();
-      } catch (_) {}
-
-      // Fallback: try @playwright/test directly
-      if (!execPath) {
-        try {
-          const pw = require('@playwright/test');
-          if (pw.chromium && typeof pw.chromium.executablePath === 'function') {
-            execPath = pw.chromium.executablePath();
-          }
-        } catch (_) {}
-      }
-
-      if (!execPath) {
+        const { chromium } = require('@playwright/test');
+        chromium.executablePath();
+        process.stdout.write('ok');
+      } catch {
         process.stdout.write('missing');
-        process.exit(0);
       }
-
-      process.stdout.write(fs.existsSync(execPath) ? 'ok' : 'missing');
     `;
-    const child = spawn("node", ["-e", script], {
+    const child = spawn('node', ['-e', script], {
       cwd,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
     const out: string[] = [];
-    child.stdout.on("data", (c: Buffer) => out.push(c.toString()));
-    child.on("exit", () => resolve(out.join("").trim() === "ok"));
-    child.on("error", () => resolve(false));
+    child.stdout.on('data', (c: Buffer) => out.push(c.toString()));
+    child.on('exit', () => resolve(out.join('').trim() === 'ok'));
+    child.on('error', () => resolve(false));
   });
 };
 
@@ -110,32 +75,43 @@ export const detectPlaywrightBrowsers = async (cwd: string): Promise<boolean> =>
 export const ensurePlaywrightBrowsers = (cwd: string): Promise<boolean> =>
   new Promise((resolve, reject) => {
     // Spawn npx directly — no need to wrap in a node -e script
-    const child = spawn("npx", ["playwright", "install", "chromium"], {
+    const child = spawn('npx', ['playwright', 'install', 'chromium'], {
       cwd,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 5 * 60 * 1000, // 5 minutes timeout
     });
 
     const stderr: string[] = [];
-    child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk.toString()));
+    child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk.toString()));
 
-    child.on("exit", (code) => {
+    child.on('exit', (code) => {
       if (code === 0) {
         resolve(true);
       } else {
         reject(
           new Error(
-            `playwright install chromium failed (exit ${code}):\n${stderr.join("").slice(0, 800)}`,
+            `playwright install chromium failed (exit ${code}):\n${stderr.join('').slice(0, 800)}`,
           ),
         );
       }
     });
 
-    child.on("error", (err) => reject(err));
+    child.on('error', (err) => reject(err));
+
+    // Handle timeout
+    child.on('timeout', () => {
+      child.kill('SIGKILL');
+      reject(new Error(`playwright install chromium timed out after 5 minutes`));
+    });
   });
 
 // ─── Playwright config generation ─────────────────────────────────────────────
 
-const buildPlaywrightConfig = (serverUrl: string, timeout: number, screenshotDir: string): string => `
+const buildPlaywrightConfig = (
+  serverUrl: string,
+  timeout: number,
+  screenshotDir: string,
+): string => `
 import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
@@ -156,7 +132,7 @@ export default defineConfig({
 
 interface PlaywrightTestResult {
   title: string;
-  status: "passed" | "failed" | "timedOut" | "skipped" | "interrupted";
+  status: 'passed' | 'failed' | 'timedOut' | 'skipped' | 'interrupted';
   duration: number;
   errors: Array<{ message?: string }>;
   attachments: Array<{ name: string; path?: string }>;
@@ -190,17 +166,18 @@ const flattenSuites = (suites: PlaywrightSuite[]): TestCase[] => {
         const result = test.results[0];
         if (!result) continue;
 
-        const status: TestCase["status"] =
-          result.status === "passed" ? "pass" :
-          result.status === "skipped" ? "skip" : "fail";
+        const status: TestCase['status'] =
+          result.status === 'passed' ? 'pass' : result.status === 'skipped' ? 'skip' : 'fail';
 
-        const screenshotAttachment = result.attachments.find((a) => a.name === "screenshot");
+        const screenshotAttachment = result.attachments.find((a) => a.name === 'screenshot');
 
         cases.push({
           name: suiteName ? `${suiteName} › ${spec.title}` : spec.title,
           status,
           durationMs: Math.round(result.duration),
-          ...(result.errors[0]?.message ? { failureMessage: result.errors[0].message.split("\n")[0] } : {}),
+          ...(result.errors[0]?.message
+            ? { failureMessage: result.errors[0].message.split('\n')[0] }
+            : {}),
           ...(screenshotAttachment?.path ? { screenshotPath: screenshotAttachment.path } : {}),
         });
       }
@@ -212,7 +189,7 @@ const flattenSuites = (suites: PlaywrightSuite[]): TestCase[] => {
   };
 
   for (const suite of suites) {
-    walk(suite, "");
+    walk(suite, '');
   }
 
   return cases;
@@ -237,8 +214,12 @@ export const parsePlaywrightJson = (raw: string): TestCase[] => {
  * production APIs, analytics, third-party services, etc.
  */
 export const wrapWithNetworkGuard = (testCode: string, serverUrl: string): string => {
-  let origin = "";
-  try { origin = new URL(serverUrl).origin; } catch { origin = ""; }
+  let origin = '';
+  try {
+    origin = new URL(serverUrl).origin;
+  } catch {
+    origin = '';
+  }
 
   const guardPreamble = `import { test as base, expect } from "@playwright/test";
 
@@ -263,10 +244,10 @@ const test = base.extend({
 `;
 
   const stripped = testCode
-    .replace(/import\s+\{[^}]*\}\s+from\s+["']@playwright\/test["'];?\s*/g, "")
+    .replace(/import\s+\{[^}]*\}\s+from\s+["']@playwright\/test["'];?\s*/g, '')
     .trim();
 
-  return [guardPreamble, stripped].filter(Boolean).join("\n\n");
+  return [guardPreamble, stripped].filter(Boolean).join('\n\n');
 };
 
 export const runPlaywrightTest = (
@@ -287,54 +268,71 @@ export const runPlaywrightTest = (
   const resultsPath = join(tmpDir, `results.json`);
 
   const guardedCode = wrapWithNetworkGuard(testCode, serverUrl);
-  writeFileSync(testFilePath, guardedCode, "utf8");
-  writeFileSync(configPath, buildPlaywrightConfig(serverUrl, timeout, ssDir), "utf8");
+  writeFileSync(testFilePath, guardedCode, 'utf8');
+  writeFileSync(configPath, buildPlaywrightConfig(serverUrl, timeout, ssDir), 'utf8');
 
   return new Promise((resolve) => {
     const start = Date.now();
     const stderr: string[] = [];
 
-    const child = spawn("npx", [
-      "playwright", "test",
-      testFilePath,
-      "--config", configPath,
-      "--reporter", "json",
-    ], {
-      cwd,
-      env: { ...process.env, ...loadProjectEnv(cwd), PLAYWRIGHT_JSON_OUTPUT_NAME: resultsPath },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    const child = spawn(
+      'npx',
+      ['playwright', 'test', testFilePath, '--config', configPath, '--reporter', 'json'],
+      {
+        cwd,
+        env: { ...process.env, ...loadProjectEnv(cwd), PLAYWRIGHT_JSON_OUTPUT_NAME: resultsPath },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
 
-    child.stderr.on("data", (chunk: Buffer) => {
+    child.stderr.on('data', (chunk: Buffer) => {
       stderr.push(chunk.toString());
     });
 
-    child.stdout.on("data", () => { /* consume stdout to prevent backpressure */ });
+    child.stdout.on('data', () => {
+      /* consume stdout to prevent backpressure */
+    });
 
-    child.on("exit", (code) => {
+    child.on('exit', (code) => {
       const durationMs = Date.now() - start;
-      const errorOutput = stderr.join("").slice(0, 5_000);
+      const errorOutput = stderr.join('').slice(0, 5_000);
 
       // Check for infra errors (Playwright not installed, etc.)
-      const isInfraError = errorOutput.includes("Executable doesn't exist") ||
-        errorOutput.includes("browserType.launch") ||
-        errorOutput.includes("npx playwright install");
+      const isInfraError =
+        errorOutput.includes("Executable doesn't exist") ||
+        errorOutput.includes('browserType.launch') ||
+        errorOutput.includes('npx playwright install');
 
       // Parse results
       let testCases: TestCase[] = [];
       if (existsSync(resultsPath)) {
         try {
-          const raw = readFileSync(resultsPath, "utf8");
+          const raw = readFileSync(resultsPath, 'utf8');
           testCases = parsePlaywrightJson(raw);
-        } catch { /* parse failure — infra error */ }
+        } catch {
+          /* parse failure — infra error */
+        }
       }
 
-      const passed = code === 0 && testCases.length > 0 && testCases.every((t) => t.status !== "fail");
+      const passed =
+        code === 0 && testCases.length > 0 && testCases.every((t) => t.status !== 'fail');
 
       // Cleanup temp files (preserve screenshots)
-      try { unlinkSync(testFilePath); } catch { /* may not exist */ }
-      try { unlinkSync(configPath); } catch { /* may not exist */ }
-      try { unlinkSync(resultsPath); } catch { /* may not exist */ }
+      try {
+        unlinkSync(testFilePath);
+      } catch {
+        /* may not exist */
+      }
+      try {
+        unlinkSync(configPath);
+      } catch {
+        /* may not exist */
+      }
+      try {
+        unlinkSync(resultsPath);
+      } catch {
+        /* may not exist */
+      }
 
       resolve({
         passed,
@@ -348,7 +346,11 @@ export const runPlaywrightTest = (
 
     // Safety timeout — kill if Playwright hangs
     setTimeout(() => {
-      try { child.kill("SIGKILL"); } catch { /* already dead */ }
+      try {
+        child.kill('SIGKILL');
+      } catch {
+        /* already dead */
+      }
     }, timeout + 10_000);
   });
 };
