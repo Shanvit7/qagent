@@ -78,6 +78,7 @@ export const ensurePlaywrightBrowsers = (cwd: string): Promise<boolean> =>
     const child = spawn('npx', ['playwright', 'install', 'chromium'], {
       cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 5 * 60 * 1000, // 5 minutes timeout
     });
 
     const stderr: string[] = [];
@@ -96,6 +97,12 @@ export const ensurePlaywrightBrowsers = (cwd: string): Promise<boolean> =>
     });
 
     child.on('error', (err) => reject(err));
+
+    // Handle timeout
+    child.on('timeout', () => {
+      child.kill('SIGKILL');
+      reject(new Error(`playwright install chromium timed out after 5 minutes`));
+    });
   });
 
 // ─── Playwright config generation ─────────────────────────────────────────────

@@ -38,8 +38,12 @@ export interface AccessibleNode {
 
 export interface ProbeSnapshot {
   viewport: ProbeViewport;
-  /** Serialised accessibility tree from the live page */
-  a11yTree: AccessibleNode | null;
+  /**
+   * ARIA snapshot YAML string from page.locator('body').ariaSnapshot().
+   * Replaces the old page.accessibility.snapshot() tree (removed in Playwright 1.49+).
+   * Null if snapshot failed.
+   */
+  a11yTree: string | null;
   /**
    * Flat list of interactive elements actually reachable at this viewport.
    * Role + accessible name pairs — what the test generator should use for locators.
