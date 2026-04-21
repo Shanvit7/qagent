@@ -152,8 +152,6 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
     })();
   }, [step]);
 
-
-
   // Install Playwright and Chromium
   useEffect(() => {
     if (step !== 'playwright-installing') return;
@@ -193,9 +191,7 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
         setNeedsChromiumInstall(false);
         setStep('provider');
       } catch (err) {
-        setErrorMsg(
-          `Install failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        setErrorMsg(`Install failed: ${err instanceof Error ? err.message : String(err)}`);
         setStep('error');
       }
     })();
@@ -314,8 +310,8 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
       {step === 'dependencies-check' && (needsPlaywrightInstall || needsChromiumInstall) && (
         <Box flexDirection="column">
           <Text color="yellow">⚠ Required dependencies missing:</Text>
-          {needsPlaywrightInstall && <Text>  • @playwright/test</Text>}
-          {needsChromiumInstall && <Text>  • Chromium browser</Text>}
+          {needsPlaywrightInstall && <Text> • @playwright/test</Text>}
+          {needsChromiumInstall && <Text> • Chromium browser</Text>}
           <Text> </Text>
           <Text>Install them now?</Text>
           <SelectInput
@@ -336,8 +332,6 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
           />
         </Box>
       )}
-
-
 
       {step === 'playwright-installing' && (
         <Box flexDirection="column">
