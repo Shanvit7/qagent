@@ -24,7 +24,6 @@ type Step =
   | 'project-check'
   | 'dependencies-check'
   | 'playwright-installing'
-  | 'chromium-installing'
   | 'provider'
   | 'loading-models'
   | 'model'
@@ -83,16 +82,22 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
         const hasPlaywright = !!(
           pkg.dependencies?.['@playwright/test'] || pkg.devDependencies?.['@playwright/test']
         );
+
+        let needsInstall = false;
         if (!hasPlaywright) {
-          setNeedsPlaywrightInstall(true);
-          return;
+          needsInstall = true;
+        } else {
+          const chromiumOk = await detectPlaywrightBrowsers(cwd);
+          if (!chromiumOk) {
+            needsInstall = true;
+          }
         }
 
-        const ok = await detectPlaywrightBrowsers(cwd);
-        if (ok) {
-          setStep('provider');
-        } else {
+        if (needsInstall) {
+          setNeedsPlaywrightInstall(!hasPlaywright);
           setNeedsChromiumInstall(true);
+        } else {
+          setStep('provider');
         }
       } catch {
         setErrorMsg('Could not check dependencies. Ensure @playwright/test is installed.');
@@ -147,60 +152,54 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
     })();
   }, [step]);
 
-  // Install Chromium
-  useEffect(() => {
-    if (step !== 'chromium-installing') return;
-    (async () => {
-      try {
-        const ok = await ensurePlaywrightBrowsers(cwd);
-        if (ok) {
-          setNeedsChromiumInstall(false);
-          setStep('provider');
-        } else {
-          setErrorMsg('Chromium install failed. Run manually: npx playwright install chromium');
-          setStep('error');
-        }
-      } catch {
-        setErrorMsg('Chromium install failed. Run manually: npx playwright install chromium');
-        setStep('error');
-      }
-    })();
-  }, [step]);
 
-  // Install Playwright
+
+  // Install Playwright and Chromium
   useEffect(() => {
     if (step !== 'playwright-installing') return;
     (async () => {
       try {
-        const pm = detectPackageManager(cwd);
-        const command = pm.addDevArgs('@playwright/test');
-        const { spawn } = await import('node:child_process');
-        const child = spawn(pm.name, command, {
-          cwd,
-          stdio: ['ignore', 'pipe', 'pipe'],
-        });
-        const stderr: string[] = [];
-        child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk.toString()));
-        await new Promise<void>((resolve, reject) => {
-          child.on('exit', (code) => {
-            if (code === 0) {
-              resolve();
-            } else {
-              reject(new Error(`Package manager install failed: ${stderr.join('')}`));
-            }
+        if (needsPlaywrightInstall) {
+          const pm = detectPackageManager(cwd);
+          const command = pm.addDevArgs('@playwright/test');
+          const { spawn } = await import('node:child_process');
+          const child = spawn(pm.name, command, {
+            cwd,
+            stdio: ['ignore', 'pipe', 'pipe'],
           });
-          child.on('error', reject);
-        });
+          const stderr: string[] = [];
+          child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk.toString()));
+          await new Promise<void>((resolve, reject) => {
+            child.on('exit', (code) => {
+              if (code === 0) {
+                resolve();
+              } else {
+                reject(new Error(`Package manager install failed: ${stderr.join('')}`));
+              }
+            });
+            child.on('error', reject);
+          });
+        }
+
+        // Install Chromium
+        const ok = await ensurePlaywrightBrowsers(cwd);
+        if (!ok) {
+          setErrorMsg('Chromium install failed. Run manually: npx playwright install chromium');
+          setStep('error');
+          return;
+        }
+
         setNeedsPlaywrightInstall(false);
-        setStep('dependencies-check'); // Re-check dependencies
+        setNeedsChromiumInstall(false);
+        setStep('provider');
       } catch (err) {
         setErrorMsg(
-          `Playwright install failed: ${err instanceof Error ? err.message : String(err)}`,
+          `Install failed: ${err instanceof Error ? err.message : String(err)}`,
         );
         setStep('error');
       }
     })();
-  }, [step, cwd]);
+  }, [step, cwd, needsPlaywrightInstall]);
 
   // Write config when done
   useEffect(() => {
@@ -312,14 +311,16 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
         </Box>
       )}
 
-      {step === 'dependencies-check' && needsPlaywrightInstall && (
+      {step === 'dependencies-check' && (needsPlaywrightInstall || needsChromiumInstall) && (
         <Box flexDirection="column">
-          <Text color="yellow">⚠ @playwright/test not found — required for browser tests.</Text>
+          <Text color="yellow">⚠ Required dependencies missing:</Text>
+          {needsPlaywrightInstall && <Text>  • @playwright/test</Text>}
+          {needsChromiumInstall && <Text>  • Chromium browser</Text>}
           <Text> </Text>
-          <Text>Install it now?</Text>
+          <Text>Install them now?</Text>
           <SelectInput
             items={[
-              { label: 'Yes, install @playwright/test', value: 'yes' },
+              { label: 'Yes, install required dependencies', value: 'yes' },
               { label: "No, I'll do it manually later", value: 'no' },
             ]}
             onSelect={(item) => {
@@ -327,7 +328,7 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
                 setStep('playwright-installing');
               } else {
                 setErrorMsg(
-                  'Aborted. Run `npm install --save-dev @playwright/test` then retry qagent init.',
+                  'Aborted. Install manually: npm install --save-dev @playwright/test && npx playwright install chromium',
                 );
                 setStep('error');
               }
@@ -336,41 +337,12 @@ export const InitWizard: React.FC<InitWizardProps> = ({ onComplete, version }) =
         </Box>
       )}
 
-      {step === 'dependencies-check' && needsChromiumInstall && (
-        <Box flexDirection="column">
-          <Text color="yellow">⚠ Playwright Chromium not found — required for browser tests.</Text>
-          <Text> </Text>
-          <Text>Install it now?</Text>
-          <SelectInput
-            items={[
-              { label: 'Yes, install Chromium', value: 'yes' },
-              { label: "No, I'll do it manually later", value: 'no' },
-            ]}
-            onSelect={(item) => {
-              if (item.value === 'yes') {
-                setStep('chromium-installing');
-              } else {
-                setErrorMsg(
-                  'Aborted. Run `npx playwright install chromium` then retry qagent init.',
-                );
-                setStep('error');
-              }
-            }}
-          />
-        </Box>
-      )}
 
-      {step === 'chromium-installing' && (
-        <Box flexDirection="column">
-          <Text color="cyan">Installing Chromium via Playwright...</Text>
-          <Text dimColor>This may take a minute.</Text>
-        </Box>
-      )}
 
       {step === 'playwright-installing' && (
         <Box flexDirection="column">
-          <Text color="cyan">Installing @playwright/test...</Text>
-          <Text dimColor>This may take a minute.</Text>
+          <Text color="cyan">Installing @playwright/test and Chromium...</Text>
+          <Text dimColor>This may take a few minutes.</Text>
         </Box>
       )}
 
