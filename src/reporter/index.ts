@@ -46,38 +46,38 @@ const ACTION_BADGE: Record<FileReport['action'], string> = {
   LIGHTWEIGHT: '[LIGHTWEIGHT]',
 };
 
-const writeln = (line = ''): void => {
-  process.stdout.write(line + '\n');
-};
-
-export const renderFileReport = (report: FileReport): void => {
+export const renderFileReport = (report: FileReport): string => {
+  const lines: string[] = [];
   const name = basename(report.sourceFile);
-  writeln();
-  writeln(`  ${ACTION_BADGE[report.action]}  ${name}`);
+  lines.push('');
+  lines.push(`  ${ACTION_BADGE[report.action]}  ${name}`);
 
   if (report.status === 'error') {
-    writeln('  ✗ Could not run tests');
-    if (report.errorOutput) writeln(report.errorOutput.slice(0, 400));
-    return;
+    lines.push('  ✗ Could not run tests');
+    if (report.errorOutput) lines.push(report.errorOutput.slice(0, 400));
+  } else {
+    const tree = report.testCases;
+    tree.forEach((tc, i) => {
+      const connector = i === tree.length - 1 ? '└─' : '├─';
+      const dur = `${tc.durationMs}ms`;
+      const icon = STATUS_ICON[tc.status];
+      lines.push(`  ${connector} ${icon}  ${tc.name}  ${dur}`);
+      if (tc.failureMessage) {
+        lines.push(`     ${tc.failureMessage}`);
+      }
+    });
+
+    const _passed = tree.filter((t) => t.status === 'pass').length;
+    const failed = tree.filter((t) => t.status === 'fail').length;
+    const total = tree.length;
+    const summary = failed > 0 ? `${failed}/${total} failed` : `${total}/${total} passed`;
+    lines.push('');
+    lines.push(`  ${summary}  ·  ${report.totalMs}ms`);
   }
 
-  const tree = report.testCases;
-  tree.forEach((tc, i) => {
-    const connector = i === tree.length - 1 ? '└─' : '├─';
-    const dur = `${tc.durationMs}ms`;
-    const icon = STATUS_ICON[tc.status];
-    writeln(`  ${connector} ${icon}  ${tc.name}  ${dur}`);
-    if (tc.failureMessage) {
-      writeln(`     ${tc.failureMessage}`);
-    }
-  });
-
-  const _passed = tree.filter((t) => t.status === 'pass').length;
-  const failed = tree.filter((t) => t.status === 'fail').length;
-  const total = tree.length;
-  const summary = failed > 0 ? `${failed}/${total} failed` : `${total}/${total} passed`;
-  writeln();
-  writeln(`  ${summary}  ·  ${report.totalMs}ms`);
+  const output = lines.join('\n');
+  process.stdout.write(output + '\n');
+  return output;
 };
 
 // ─── Git helpers ──────────────────────────────────────────────────────────────

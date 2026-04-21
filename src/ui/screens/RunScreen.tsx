@@ -42,8 +42,11 @@ export const RunScreen: React.FC<RunScreenProps> = ({ options, onComplete }) => 
   const [status, setStatus] = useState<string>('Initializing...');
   const [details, setDetails] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [hasRun, setHasRun] = useState(false);
 
   useEffect(() => {
+    if (hasRun) return;
+    setHasRun(true);
     const run = async () => {
       const cwd = process.cwd();
 
@@ -219,7 +222,6 @@ export const RunScreen: React.FC<RunScreenProps> = ({ options, onComplete }) => 
 
   return (
     <Box flexDirection="column" padding={1}>
-      <Text color="cyan">qagent run</Text>
       <Text>{''}</Text>
       <Text>{status}</Text>
       {details.map((detail, i) => (
@@ -341,7 +343,7 @@ const processFile = async (
       testCases: result.testCases,
       totalMs: result.durationMs,
     };
-    renderFileReport(report);
+    logDetail(renderFileReport(report));
 
     if (!result.passed) {
       failureText = `File: ${file.path}\nFailed tests: ${result.testCases

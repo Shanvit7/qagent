@@ -133,32 +133,44 @@ async function probeViewport(browser, baseUrl, vp) {
       consoleErrors.push('Body not found: ' + e.message);
     }
 
-    // ── Accessibility tree ──────────────────────────────────────────────────
+    // ── ARIA snapshot (replaces old page.accessibility.snapshot) ─────────────
     let a11yTree = null;
     try {
-      a11yTree = await page.accessibility.snapshot({ interestingOnly: false });
+      a11yTree = await page.locator('body').ariaSnapshot();
       if (!a11yTree) {
-        consoleErrors.push('Accessibility snapshot returned null');
+        consoleErrors.push('ARIA snapshot returned empty string');
       }
     } catch (e) {
-      consoleErrors.push('Accessibility snapshot error: ' + e.message);
+      consoleErrors.push('ARIA snapshot error: ' + e.message);
     }
 
-    // ── Interactive elements reachable via a11y ─────────────────────────────
+    // ── Interactive elements via role locators ──────────────────────────────
+    // Since page.accessibility is gone, query for interactive elements directly
     const interactiveRoles = [
       'button', 'link', 'textbox', 'checkbox', 'radio', 'combobox',
       'listbox', 'menuitem', 'tab', 'switch', 'searchbox', 'spinbutton',
     ];
 
     const interactiveElements = [];
-    const walk = (node) => {
-      if (!node) return;
-      if (interactiveRoles.includes((node.role || '').toLowerCase()) && node.name) {
-        interactiveElements.push({ role: node.role, name: node.name });
-      }
-      (node.children || []).forEach(walk);
-    };
-    walk(a11yTree);
+    for (const role of interactiveRoles) {
+      try {
+        const locators = page.getByRole(role, { includeHidden: false });
+        const count = await locators.count();
+        for (let i = 0; i < count && interactiveElements.length < 50; i++) { // cap at 50 total
+          const locator = locators.nth(i);
+          try {
+            const name = await locator.getAttribute('aria-label') ||
+                         await locator.textContent() ||
+                         await locator.getAttribute('placeholder') ||
+                         await locator.getAttribute('value') ||
+                         await locator.getAttribute('alt');
+            if (name && name.trim()) {
+              interactiveElements.push({ role, name: name.trim() });
+            }
+          } catch (_) { /* skip if can't get name */ }
+        }
+      } catch (_) { /* skip role if not supported */ }
+    }
 
     // ── Hidden / inaccessible elements ──────────────────────────────────────
     const hiddenElements = await page.evaluate(() => {
