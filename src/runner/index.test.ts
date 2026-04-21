@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parsePlaywrightJson, wrapWithNetworkGuard } from './index';
+import { parsePlaywrightJson, wrapWithNetworkGuard, detectPlaywrightBrowsers } from './index';
 
 describe('runner', () => {
   describe('parsePlaywrightJson', () => {
@@ -206,6 +206,13 @@ test("works", async ({ page }) => {
     it('falls back when serverUrl is invalid', () => {
       const wrapped = wrapWithNetworkGuard("test('x', async ()=>{});", 'not a url');
       expect(wrapped).toContain('const ORIGIN = ""');
+    });
+  });
+
+  describe('detectPlaywrightBrowsers', () => {
+    it('returns a boolean', async () => {
+      const result = await detectPlaywrightBrowsers(process.cwd());
+      expect(typeof result).toBe('boolean');
     });
   });
 });

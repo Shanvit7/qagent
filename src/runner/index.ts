@@ -38,20 +38,14 @@ const getScreenshotDir = (cwd: string): string => join(cwd, '.qagent', 'screensh
  * Detect whether Playwright's Chromium browser binary is installed
  * for the **target project's** Playwright version.
  *
- * Checks if @playwright/test is installed — assumes browsers can be installed if the package is present.
- */
-/**
- * Detect whether Playwright's Chromium browser binary is installed
- * for the **target project's** Playwright version.
- *
- * Strategy: If @playwright/test is installed, assume browsers can be installed.
- * This is simpler and more reliable than checking executable paths.
+ * Checks if @playwright/test is installed and Chromium executable is available.
  */
 export const detectPlaywrightBrowsers = async (cwd: string): Promise<boolean> => {
   return new Promise((resolve) => {
     const script = `
       try {
-        require('@playwright/test');
+        const { chromium } = require('@playwright/test');
+        chromium.executablePath();
         process.stdout.write('ok');
       } catch {
         process.stdout.write('missing');
