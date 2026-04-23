@@ -491,6 +491,7 @@ export const buildRefinementPrompt = (ctx: RefinementContext): string => {
 
 export {
   DEFAULT_CRITERIA,
+  buildCriteriaForRegions,
   type GradingCriterion,
   type EvaluationScore,
   type EvaluationResult,
