@@ -325,20 +325,17 @@ const processFile = async (
     logDetail(`${label} — iteration ${iteration}: evaluating and refining...`);
 
     // Evaluate the test quality
-    const evaluation = await evaluateTests(
-      finalTestCode,
-      analysis,
-      config.ai,
-      {
-        criteria: buildCriteriaForRegions(classification.changedRegions as ChangeRegion[] || []),
-        failedTests: finalResult.testCases.filter(t => t.status === 'fail').map(t => ({
+    const evaluation = await evaluateTests(finalTestCode, analysis, config.ai, {
+      criteria: buildCriteriaForRegions((classification.changedRegions as ChangeRegion[]) || []),
+      failedTests: finalResult.testCases
+        .filter((t) => t.status === 'fail')
+        .map((t) => ({
           name: t.name,
           error: t.failureMessage,
           screenshotPath: t.screenshotPath,
         })),
-        iteration,
-      }
-    );
+      iteration,
+    });
 
     if (evaluation.passed) {
       logDetail(`${label} — quality passed, re-running tests...`);
@@ -352,11 +349,13 @@ const processFile = async (
         kind: 'runtime',
         iteration,
         evaluation,
-        failedTests: finalResult.testCases.filter(t => t.status === 'fail').map(t => ({
-          name: t.name,
-          error: t.failureMessage,
-          screenshotPath: t.screenshotPath,
-        })),
+        failedTests: finalResult.testCases
+          .filter((t) => t.status === 'fail')
+          .map((t) => ({
+            name: t.name,
+            error: t.failureMessage,
+            screenshotPath: t.screenshotPath,
+          })),
         previousCritique: evaluation.critique,
       });
 
