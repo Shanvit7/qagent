@@ -3,9 +3,9 @@ import { Box, Text } from 'ink';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { getStagedFiles } from '@/git/staged';
-import { classifyStagedFiles, type ClassifiedFile } from '@/classifier/index';
+import { classifyStagedFiles, type ClassifiedFile, type ChangeRegion } from '@/classifier/index';
 import { analyzeFile } from '@/analyzer/index';
-import { generateTests, type GenerateTestsOptions } from '@/generator/index';
+import { generateTests, refineTests, type GenerateTestsOptions } from '@/generator/index';
 import { runPlaywrightTest } from '@/runner/index';
 import { loadConfig } from '@/config/loader';
 import { runPreflight } from '@/preflight/index';
@@ -24,6 +24,7 @@ import {
   formatProviderError,
 } from '@/providers/index';
 import { MIN_ITERATIONS, MAX_ITERATIONS } from '@/config/loader';
+import { evaluateTests, buildRefinementPrompt, buildCriteriaForRegions } from '@/evaluator/index';
 
 const QAGENT_DIR = join(process.cwd(), '.qagent');
 const LAST_FAILURE_PATH = join(QAGENT_DIR, 'last-failure.txt');
@@ -313,12 +314,66 @@ const processFile = async (
   }
 
   const result = await runPlaywrightTest(testCode, serverUrl, cwd);
+
+  // GAN loop: If tests failed, enter evaluator loop for refinement
+  let finalTestCode = testCode;
+  let finalResult = result;
+  let iteration = 1;
+
+  while (!finalResult.passed && iteration < config.evaluator.maxIterations) {
+    iteration++;
+    logDetail(`${label} — iteration ${iteration}: evaluating and refining...`);
+
+    // Evaluate the test quality
+    const evaluation = await evaluateTests(finalTestCode, analysis, config.ai, {
+      criteria: buildCriteriaForRegions((classification.changedRegions as ChangeRegion[]) || []),
+      failedTests: finalResult.testCases
+        .filter((t) => t.status === 'fail')
+        .map((t) => ({
+          name: t.name,
+          error: t.failureMessage,
+          screenshotPath: t.screenshotPath,
+        })),
+      iteration,
+    });
+
+    if (evaluation.passed) {
+      logDetail(`${label} — quality passed, re-running tests...`);
+    } else {
+      // Refine the test code based on critique
+      const refinementPrompt = buildRefinementPrompt({
+        testCode: finalTestCode,
+        sourceCode: analysis.sourceText,
+        filePath: analysis.filePath,
+        route: routes[0] || '/',
+        kind: 'runtime',
+        iteration,
+        evaluation,
+        failedTests: finalResult.testCases
+          .filter((t) => t.status === 'fail')
+          .map((t) => ({
+            name: t.name,
+            error: t.failureMessage,
+            screenshotPath: t.screenshotPath,
+          })),
+        previousCritique: evaluation.critique,
+      });
+
+      finalTestCode = await refineTests(finalTestCode, refinementPrompt, config.ai);
+    }
+
+    // Re-run with refined code
+    finalResult = await runPlaywrightTest(finalTestCode, serverUrl, cwd);
+  }
+
+  logDetail(`${label} — final result after ${iteration} iterations`);
+
   const action = classification.action as 'FULL_QA' | 'LIGHTWEIGHT';
 
   const lastTestPath = join(cwd, '.qagent', 'last-test.ts');
   try {
     mkdirSync(join(cwd, '.qagent'), { recursive: true });
-    writeFileSync(lastTestPath, testCode, 'utf8');
+    writeFileSync(lastTestPath, finalTestCode, 'utf8');
   } catch {
     /* ignore */
   }
@@ -326,27 +381,27 @@ const processFile = async (
   let report: FileReport;
   let failureText: string | null = null;
 
-  if (result.testCases.length === 0) {
+  if (finalResult.testCases.length === 0) {
     report = {
       sourceFile: file.path,
       action,
       status: 'error',
       testCases: [],
-      totalMs: result.durationMs,
+      totalMs: finalResult.durationMs,
     };
-    failureText = `File: ${file.path}\nError: ${result.errorOutput}`;
+    failureText = `File: ${file.path}\nError: ${finalResult.errorOutput}`;
   } else {
     report = {
       sourceFile: file.path,
       action,
-      status: result.passed ? 'pass' : 'fail',
-      testCases: result.testCases,
-      totalMs: result.durationMs,
+      status: finalResult.passed ? 'pass' : 'fail',
+      testCases: finalResult.testCases,
+      totalMs: finalResult.durationMs,
     };
     logDetail(renderFileReport(report));
 
-    if (!result.passed) {
-      failureText = `File: ${file.path}\nFailed tests: ${result.testCases
+    if (!finalResult.passed) {
+      failureText = `File: ${file.path}\nFailed tests: ${finalResult.testCases
         .filter((t) => t.status === 'fail')
         .map((t) => t.name)
         .join(', ')}`;
